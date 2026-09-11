@@ -1,8 +1,8 @@
 import { io, Socket } from 'socket.io-client';
+import { JWT_STORAGE_KEY } from '@/api/client';
 import type { SocketEventMap } from '@/types';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
-const TOKEN_KEY = import.meta.env.VITE_TOKEN_KEY || 'safeops_token';
+const SOCKET_SERVER_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
 
 type SocketEventKey = keyof SocketEventMap;
 type SocketEventHandler<K extends SocketEventKey> = (data: SocketEventMap[K]) => void;
@@ -15,10 +15,10 @@ class SocketService {
   connect(): Socket {
     if (this.socket?.connected) return this.socket;
 
-    const token = localStorage.getItem(TOKEN_KEY);
+    const authToken = localStorage.getItem(JWT_STORAGE_KEY);
 
-    this.socket = io(SOCKET_URL, {
-      auth: { token },
+    this.socket = io(SOCKET_SERVER_URL, {
+      auth: { token: authToken },
       transports: ['websocket', 'polling'],
       reconnectionAttempts: this.maxReconnectAttempts,
       reconnectionDelay: 1000,

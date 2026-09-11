@@ -1,41 +1,47 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-const TOKEN_KEY = import.meta.env.VITE_TOKEN_KEY || 'safeops_token';
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+// ─── LocalStorage key names ───────────────────────────────────────────────────
+// These are the keys used to persist auth data between page loads.
+// Other modules import these constants so the key strings stay in one place.
+export const JWT_STORAGE_KEY  = import.meta.env.VITE_TOKEN_KEY || 'safeops_token';
+export const USER_PROFILE_KEY = 'safeops_user';
+
+// ─── Axios instance ───────────────────────────────────────────────────────────
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
 
 export const apiClient = axios.create({
-  baseURL: BASE_URL,
-  timeout: 15000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  baseURL: apiBaseUrl,
+  timeout: 15_000,
+  headers: { 'Content-Type': 'application/json' },
 });
 
-// Request interceptor – attach JWT token
+// ─── Request interceptor: attach JWT on every outgoing request ────────────────
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
+    const savedToken = localStorage.getItem(JWT_STORAGE_KEY);
+    if (savedToken && config.headers) {
+      config.headers.Authorization = `Bearer ${savedToken}`;
     }
     return config;
   },
-  (error) => Promise.reject(error),
+  (requestError) => Promise.reject(requestError),
 );
 
-// Response interceptor – handle auth errors
+// ─── Response interceptor: handle expired / invalid JWT ──────────────────────
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    // Only auto-redirect on 401 for protected API calls (not the login endpoint itself)
-    const isAuthEndpoint = error.config?.url?.includes('/auth/');
-    if (error.response?.status === 401 && !isAuthEndpoint) {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem('safeops_user');
+    const isAuthRoute = error.config?.url?.includes('/auth/');
+    const isUnauthorized = error.response?.status === 401;
+
+    // Clear local session and redirect to login on 401,
+    // but NOT during the login request itself (that would hide the error message).
+    if (isUnauthorized && !isAuthRoute) {
+      localStorage.removeItem(JWT_STORAGE_KEY);
+      localStorage.removeItem(USER_PROFILE_KEY);
       window.location.href = '/login';
     }
+
     return Promise.reject(error);
   },
 );
-
-export { TOKEN_KEY };

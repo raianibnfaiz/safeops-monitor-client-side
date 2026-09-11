@@ -47,14 +47,14 @@ export function RecentEvents({ events, isLoading }: RecentEventsProps) {
                 </div>
               </div>
             ))
-          : events.map((event) => {
+          : events.map((event, idx) => {
               const config = EVENT_ICON_MAP[event.type] ?? {
                 icon: Radio,
                 color: 'text-gray-400',
               };
               const Icon = config.icon;
               return (
-                <div key={event.id} className="flex items-start gap-3 px-6 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                <div key={event.id ?? idx} className="flex items-start gap-3 px-6 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
                   <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
                     <Icon className={clsx('w-4 h-4', config.color)} />
                   </div>

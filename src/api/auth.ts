@@ -1,134 +1,248 @@
-import { apiClient, TOKEN_KEY } from './client';
-import type { LoginCredentials, AuthResponse, AuthUser } from '@/types';
+/**
+ * Auth API service
+ *
+ * Implements the three steps of the JWT authentication flow:
+ *   1. login  → POST /api/auth/login  → store token + user profile
+ *   2. getCurrentUser → read from localStorage (no extra network call)
+ *   3. logout → POST /api/auth/logout → clear local storage
+ *
+ * All protected routes on the backend already validate the JWT that
+ * the Axios client attaches via the Authorization header.
+ */
 
-// ---------------------------------------------------------------------------
-// MOCK MODE — set VITE_MOCK_AUTH=true in .env to bypass the real backend.
-// ---------------------------------------------------------------------------
-const MOCK_AUTH = import.meta.env.VITE_MOCK_AUTH === 'true';
-const USER_KEY = 'safeops_user';
+import { apiClient, JWT_STORAGE_KEY, USER_PROFILE_KEY } from './client';
+import { isTokenExpired, decodeJwtPayload } from '@/utils/jwt';
+import type { LoginCredentials, RegisterCredentials, AuthResponse, AuthUser } from '@/types';
 
-const MOCK_USER: AuthUser = {
-  id: 'usr_001',
-  name: 'Alex Johnson',
+// ─── Demo mode ────────────────────────────────────────────────────────────────
+// Set VITE_MOCK_AUTH=true in .env to bypass the real backend during UI testing.
+const IS_DEMO_MODE = import.meta.env.VITE_MOCK_AUTH === 'true';
+
+const DEMO_USER: AuthUser = {
+  id:    'demo-001',
+  name:  'Alex Johnson',
   email: 'admin@safeops.com',
-  role: 'admin',
+  role:  'admin',
 };
-const MOCK_TOKEN = 'mock-jwt-token-safeops-demo';
+const DEMO_TOKEN = 'demo-jwt-token-not-for-production';
 
-async function mockLogin(credentials: LoginCredentials): Promise<AuthResponse> {
-  await new Promise((r) => setTimeout(r, 800));
-  if (credentials.email === 'admin@safeops.com' && credentials.password === 'password') {
-    localStorage.setItem(TOKEN_KEY, MOCK_TOKEN);
-    localStorage.setItem(USER_KEY, JSON.stringify(MOCK_USER));
-    return { token: MOCK_TOKEN, user: MOCK_USER, expiresIn: 86400 };
+async function demoLogin(credentials: LoginCredentials): Promise<AuthResponse> {
+  // Simulate a realistic network delay
+  await new Promise((resolve) => setTimeout(resolve, 700));
+
+  const isValidDemoCredentials =
+    credentials.email    === 'admin@safeops.com' &&
+    credentials.password === 'password';
+
+  if (!isValidDemoCredentials) {
+    const loginError = new Error('Invalid credentials. Use admin@safeops.com / password');
+    Object.assign(loginError, {
+      response: {
+        status: 401,
+        data: { message: 'Invalid credentials. Use admin@safeops.com / password' },
+      },
+    });
+    throw loginError;
   }
-  const err = new Error('Invalid credentials. Use admin@safeops.com / password');
-  Object.assign(err, { response: { status: 401, data: { message: 'Invalid credentials. Use admin@safeops.com / password' } } });
-  throw err;
-}
 
-async function mockMe(): Promise<AuthUser> {
-  await new Promise((r) => setTimeout(r, 100));
-  const token = localStorage.getItem(TOKEN_KEY);
-  if (token === MOCK_TOKEN) return MOCK_USER;
-  const err = new Error('Unauthorized');
-  Object.assign(err, { response: { status: 401 } });
-  throw err;
+  localStorage.setItem(JWT_STORAGE_KEY,  DEMO_TOKEN);
+  localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(DEMO_USER));
+  return { token: DEMO_TOKEN, user: DEMO_USER, expiresIn: 86_400 };
 }
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 
-// Extract human-readable message from any Axios error response shape
+/**
+ * Extract a human-readable error message from any Axios error.
+ * Reads the `message` field from the backend's JSON error body.
+ */
 export function extractErrorMessage(error: unknown): string {
-  if (!error || typeof error !== 'object') return 'An unexpected error occurred.';
-  const err = error as Record<string, unknown>;
-  const response = err.response as Record<string, unknown> | undefined;
-  if (!response) {
-    // Network error — no connection to server
-    const msg = (err.message as string | undefined) ?? '';
-    if (msg.includes('Network Error') || msg.includes('ECONNREFUSED')) {
+  if (!error || typeof error !== 'object') {
+    return 'An unexpected error occurred.';
+  }
+
+  const axiosError   = error as Record<string, unknown>;
+  const httpResponse = axiosError.response as Record<string, unknown> | undefined;
+
+  if (!httpResponse) {
+    // No HTTP response — likely a network connectivity problem
+    const errorMessage = (axiosError.message as string | undefined) ?? '';
+    const isConnectionRefused =
+      errorMessage.includes('Network Error') ||
+      errorMessage.includes('ECONNREFUSED') ||
+      errorMessage.includes('ERR_CONNECTION_REFUSED');
+
+    if (isConnectionRefused) {
       return 'Cannot reach the server. Make sure the backend is running on http://localhost:5000.';
     }
-    return msg || 'Network error. Please try again.';
+    return errorMessage || 'Network error. Please try again.';
   }
-  const data = response.data as Record<string, unknown> | undefined;
-  // Backend sends { success: false, message: "..." }
+
+  // Backend returns { success: false, message: "..." }
+  const responseBody = httpResponse.data as Record<string, unknown> | undefined;
   return (
-    (data?.message as string | undefined) ??
-    (data?.error as string | undefined) ??
-    `Server error (${response.status}).`
+    (responseBody?.message as string | undefined) ??
+    (responseBody?.error   as string | undefined) ??
+    `Server error (${httpResponse.status}).`
   );
 }
 
-// ---------------------------------------------------------------------------
-// Normalise login response — backend sends: { success, token, user }
-// Our AuthResponse type expects:          { token, user, expiresIn }
-// ---------------------------------------------------------------------------
-function normaliseLoginResponse(raw: unknown): AuthResponse {
-  const r = raw as Record<string, unknown>;
-  // Unwrap { data: {...} } if present
-  const payload = (r.data as Record<string, unknown> | undefined) ?? r;
-  const token = (payload.token as string | undefined) ?? (payload.accessToken as string | undefined) ?? '';
-  const rawUser = (payload.user as Record<string, unknown> | undefined) ?? {};
-  const user: AuthUser = {
-    id: (rawUser._id ?? rawUser.id ?? '') as string,
-    name: (rawUser.name ?? '') as string,
-    email: (rawUser.email ?? '') as string,
-    role: ((rawUser.role as string | undefined) ?? 'viewer') as AuthUser['role'],
-    avatar: rawUser.avatar as string | undefined,
+/**
+ * Parse the raw login response from the backend.
+ *
+ * Backend sends:     { success: true, token: "eyJ...", user: { _id, name, email, role } }
+ * AuthResponse type: { token, user, expiresIn }
+ */
+function parseLoginResponse(rawResponse: unknown): AuthResponse {
+  const responseBody = rawResponse as Record<string, unknown>;
+
+  // Some backends wrap the payload in a `data` envelope
+  const loginPayload =
+    (responseBody.data as Record<string, unknown> | undefined) ?? responseBody;
+
+  const authToken =
+    (loginPayload.token       as string | undefined) ??
+    (loginPayload.accessToken as string | undefined) ??
+    '';
+
+  const rawUserData = (loginPayload.user as Record<string, unknown> | undefined) ?? {};
+
+  const userProfile: AuthUser = {
+    id:     String(rawUserData._id   ?? rawUserData.id    ?? ''),
+    name:   String(rawUserData.name  ?? ''),
+    email:  String(rawUserData.email ?? ''),
+    role:  ((rawUserData.role as string | undefined) ?? 'viewer') as AuthUser['role'],
+    avatar:  rawUserData.avatar as string | undefined,
   };
-  return { token, user, expiresIn: (payload.expiresIn as number | undefined) ?? 86400 };
+
+  return {
+    token:     authToken,
+    user:      userProfile,
+    expiresIn: (loginPayload.expiresIn as number | undefined) ?? 86_400,
+  };
 }
 
+// ─── Auth API ─────────────────────────────────────────────────────────────────
+
 export const authApi = {
-  login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
-    if (MOCK_AUTH) return mockLogin(credentials);
-    const { data } = await apiClient.post('/auth/login', credentials);
-    const result = normaliseLoginResponse(data);
-    localStorage.setItem(TOKEN_KEY, result.token);
-    // Cache user so we don't need a /me endpoint
-    localStorage.setItem(USER_KEY, JSON.stringify(result.user));
-    return result;
+
+  /**
+   * STEP 0 — Register (first-time setup)
+   *
+   * Creates a new user account, then immediately logs in so the user
+   * lands on the dashboard without a second form submission.
+   */
+  register: async (credentials: RegisterCredentials): Promise<AuthResponse> => {
+    const { data: rawResponse } = await apiClient.post('/auth/register', credentials);
+    const authResult = parseLoginResponse(rawResponse);
+
+    if (!authResult.token) {
+      throw new Error('Registration succeeded but the server returned no token.');
+    }
+
+    localStorage.setItem(JWT_STORAGE_KEY,  authResult.token);
+    localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(authResult.user));
+    return authResult;
   },
 
+  /**
+   * STEP 1 — Login
+   *
+   * Sends credentials to the backend. On success, stores the returned JWT
+   * and user profile in localStorage so they survive page refreshes.
+   */
+  login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
+    if (IS_DEMO_MODE) return demoLogin(credentials);
+
+    const { data: rawResponse } = await apiClient.post('/auth/login', credentials);
+    const authResult = parseLoginResponse(rawResponse);
+
+    if (!authResult.token) {
+      throw new Error('Login succeeded but the server returned no token.');
+    }
+
+    // Persist the JWT and user profile for session restoration on page reload
+    localStorage.setItem(JWT_STORAGE_KEY,  authResult.token);
+    localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(authResult.user));
+
+    return authResult;
+  },
+
+  /**
+   * STEP 2 — Restore session (called on every page load)
+   *
+   * Reads the stored JWT and validates its expiry locally — no network call.
+   * Returns the cached user profile if the token is still valid.
+   * Throws with status 401 if there is no token, the token is expired,
+   * or the token payload cannot be decoded; AuthContext will redirect to /login.
+   */
+  getCurrentUser: async (): Promise<AuthUser> => {
+    if (IS_DEMO_MODE) {
+      const savedToken = localStorage.getItem(JWT_STORAGE_KEY);
+      if (savedToken === DEMO_TOKEN) return DEMO_USER;
+      throw Object.assign(new Error('No active session'), { response: { status: 401 } });
+    }
+
+    const savedToken = localStorage.getItem(JWT_STORAGE_KEY);
+
+    if (!savedToken) {
+      throw Object.assign(new Error('No token found — please log in'), { response: { status: 401 } });
+    }
+
+    if (isTokenExpired(savedToken)) {
+      localStorage.removeItem(JWT_STORAGE_KEY);
+      localStorage.removeItem(USER_PROFILE_KEY);
+      throw Object.assign(new Error('Session expired — please log in again'), { response: { status: 401 } });
+    }
+
+    // Token is valid — return the cached user profile (avoids an extra network request)
+    const cachedUserJson = localStorage.getItem(USER_PROFILE_KEY);
+    if (cachedUserJson) {
+      try {
+        return JSON.parse(cachedUserJson) as AuthUser;
+      } catch {
+        // Cache was corrupted — fall through and rebuild from JWT payload
+      }
+    }
+
+    // Edge case: token present but user cache missing — reconstruct from JWT payload
+    const jwtPayload = decodeJwtPayload(savedToken);
+    if (jwtPayload) {
+      const userProfile: AuthUser = {
+        id:    String(jwtPayload.sub ?? jwtPayload.id ?? jwtPayload.userId ?? ''),
+        name:  String(jwtPayload.name  ?? jwtPayload.email ?? 'User'),
+        email: String(jwtPayload.email ?? ''),
+        role: ((jwtPayload.role as string | undefined) ?? 'viewer') as AuthUser['role'],
+      };
+      localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(userProfile));
+      return userProfile;
+    }
+
+    // Token exists but cannot be decoded — treat as invalid
+    localStorage.removeItem(JWT_STORAGE_KEY);
+    throw Object.assign(new Error('Token is invalid — please log in again'), { response: { status: 401 } });
+  },
+
+  /**
+   * STEP 3 — Logout
+   *
+   * Notifies the backend (so it can invalidate the token server-side),
+   * then clears all auth data from localStorage regardless of the result.
+   */
   logout: async (): Promise<void> => {
-    if (MOCK_AUTH) {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(USER_KEY);
+    if (IS_DEMO_MODE) {
+      localStorage.removeItem(JWT_STORAGE_KEY);
+      localStorage.removeItem(USER_PROFILE_KEY);
       return;
     }
-    try {
-      await apiClient.post('/auth/logout');
-    } finally {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(USER_KEY);
-    }
-  },
 
-  // Backend has no /me endpoint — return cached user from localStorage.
-  // If not found, the AuthContext will treat the session as expired.
-  me: async (): Promise<AuthUser> => {
-    if (MOCK_AUTH) return mockMe();
-    const cached = localStorage.getItem(USER_KEY);
-    if (cached) {
-      try {
-        return JSON.parse(cached) as AuthUser;
-      } catch { /* fall through */ }
-    }
-    // Fallback: try /me if the backend supports it
     try {
-      const { data } = await apiClient.get('/auth/me');
-      const r = data as Record<string, unknown>;
-      const raw = (r.data ?? r.user ?? r) as Record<string, unknown>;
-      return {
-        id: (raw._id ?? raw.id ?? '') as string,
-        name: (raw.name ?? '') as string,
-        email: (raw.email ?? '') as string,
-        role: ((raw.role as string | undefined) ?? 'viewer') as AuthUser['role'],
-      };
+      // Best-effort call — the backend may blacklist the token server-side
+      await apiClient.post('/auth/logout');
     } catch {
-      // No token or /me not found — force re-login
-      localStorage.removeItem(TOKEN_KEY);
-      throw Object.assign(new Error('Session expired'), { response: { status: 401 } });
+      // Ignore backend errors; local session must be cleared either way
+    } finally {
+      localStorage.removeItem(JWT_STORAGE_KEY);
+      localStorage.removeItem(USER_PROFILE_KEY);
     }
   },
 };

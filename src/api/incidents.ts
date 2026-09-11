@@ -40,15 +40,52 @@ function normaliseIncidentsResponse(raw: unknown): IncidentsResponse {
   return { incidents, total, page, pageSize };
 }
 
+// ---------------------------------------------------------------------------
+// Normalise a raw event document from the backend.
+// Handles _id → id, field aliases, and unknown type strings.
+// ---------------------------------------------------------------------------
+function normaliseEvent(raw: Record<string, unknown>): SafetyEvent {
+  // Map backend type strings → our SafetyEventType union
+  const rawType = String(raw.type ?? raw.eventType ?? '').toLowerCase();
+  const typeMap: Record<string, SafetyEvent['type']> = {
+    worker_online: 'worker_online', online: 'worker_online', connected: 'worker_online',
+    worker_offline: 'worker_offline', offline: 'worker_offline', disconnected: 'worker_offline',
+    incident_created: 'incident_created', incident: 'incident_created',
+    incident_updated: 'incident_updated', updated: 'incident_updated',
+    incident_resolved: 'incident_resolved', resolved: 'incident_resolved',
+    sos_alert: 'sos_alert', sos: 'sos_alert',
+    fall_detected: 'fall_detected', fall: 'fall_detected',
+    low_battery: 'low_battery', battery: 'low_battery',
+    location_update: 'location_update', location: 'location_update',
+    zone_breach: 'zone_breach', zone: 'zone_breach',
+  };
+
+  return {
+    id:          String(raw._id ?? raw.id ?? `evt-${Math.random().toString(36).slice(2)}`),
+    type:        typeMap[rawType] ?? 'incident_updated',
+    title:       String(raw.title ?? raw.message ?? raw.type ?? 'Safety Event'),
+    description: String(raw.description ?? raw.message ?? raw.details ?? ''),
+    workerId:    (raw.workerId ?? raw.worker_id) as string | undefined,
+    workerName:  (raw.workerName ?? raw.worker_name ??
+                  (raw.worker as Record<string, unknown> | undefined)?.name) as string | undefined,
+    incidentId:  (raw.incidentId ?? raw.incident_id) as string | undefined,
+    severity:    (raw.severity as SafetyEvent['severity']) ?? undefined,
+    timestamp:   String(raw.timestamp ?? raw.createdAt ?? raw.created_at ?? new Date().toISOString()),
+    metadata:    (raw.metadata ?? raw.data) as Record<string, unknown> | undefined,
+  };
+}
+
 function normaliseEventsResponse(raw: unknown): SafetyEvent[] {
-  if (Array.isArray(raw)) return raw as SafetyEvent[];
-  const r = raw as Record<string, unknown>;
-  return (
-    (r.events as SafetyEvent[] | undefined) ??
-    (r.data as SafetyEvent[] | undefined) ??
-    (r.results as SafetyEvent[] | undefined) ??
-    []
-  );
+  const arr: unknown[] = Array.isArray(raw)
+    ? raw
+    : (
+        (raw as Record<string, unknown>).events ??
+        (raw as Record<string, unknown>).data ??
+        (raw as Record<string, unknown>).results ??
+        []
+      ) as unknown[];
+
+  return (arr as Record<string, unknown>[]).map(normaliseEvent);
 }
 
 // ---------------------------------------------------------------------------
@@ -122,27 +159,13 @@ export const incidentsApi = {
   },
 
   // -------------------------------------------------------------------
-  // Stats: try GET /incidents/stats first (if backend has it).
-  // If 404 → fall back to fetching all incidents and computing locally.
+  // Stats: computed client-side from GET /incidents (backend has no
+  // /incidents/stats route — avoids a guaranteed 404 network error).
   // -------------------------------------------------------------------
   getStats: async (): Promise<IncidentStats> => {
-    try {
-      const { data } = await apiClient.get('/incidents/stats');
-      const stats =
-        (data as Record<string, unknown>).data ??
-        (data as Record<string, unknown>).stats ??
-        data;
-      return stats as IncidentStats;
-    } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } })?.response?.status;
-      if (status === 404 || status === 500) {
-        // Endpoint doesn't exist — compute from a broad incidents fetch
-        const { data } = await apiClient.get('/incidents', { params: { limit: 500, page: 1 } });
-        const { incidents } = normaliseIncidentsResponse(data);
-        return computeStats(incidents);
-      }
-      throw err;
-    }
+    const { data } = await apiClient.get('/incidents', { params: { limit: 500, page: 1 } });
+    const { incidents } = normaliseIncidentsResponse(data);
+    return computeStats(incidents);
   },
 
   // -------------------------------------------------------------------

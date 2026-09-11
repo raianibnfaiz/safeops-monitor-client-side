@@ -26,7 +26,7 @@ built with React 18, TypeScript, Vite, and Tailwind CSS.
 - **Dashboard** — Live stat cards, incident charts (bar + pie), safety events feed, system health panel
 - **Workers Page** — Searchable, filterable table with status badges, battery level, pagination
 - **Worker Details** — Profile card, device info, location visualisation, activity feed, incident history
-- **Incidents Page** — Multi-filter list, expandable rows, full lifecycle actions (Acknowledge → Resolve)
+- **Incidents Page** — Filterable list, expandable details, Acknowledge/Resolve actions saved to MongoDB via API
 - **Real-time** — Socket.IO auto-refreshes all pages; toast alerts for Critical/High severity events
 - **Dark / Light mode** — Follows system preference; toggle available in the header
 - **Fully responsive** — Works on mobile and desktop
@@ -125,6 +125,60 @@ The backend issues a **7-day token** on successful login.
 
 > **Security note:** `localStorage` is used for simplicity and compatibility.  
 > For higher security requirements, consider switching to `httpOnly` cookies (requires backend support).
+
+---
+
+## Incidents
+
+The Incidents page (`/incidents`) is where operators review safety incidents and update their status.  
+Changes are **not stored only in the browser** — every Acknowledge or Resolve click is sent to the backend and saved in MongoDB.
+
+### Incident lifecycle
+
+```
+OPEN  →  ACKNOWLEDGED  →  RESOLVED
+```
+
+| Status | Meaning | Buttons shown |
+|---|---|---|
+| `OPEN` | New incident, not yet handled | **Acknowledge** and **Resolve** |
+| `ACKNOWLEDGED` | Someone has seen it and is working on it | **Resolve** |
+| `RESOLVED` | Incident is closed | No action buttons |
+
+### How Acknowledge works
+
+1. User clicks **Acknowledge** on an open incident.
+2. Frontend calls `POST /api/incidents/{id}/acknowledge` with the JWT.
+3. Backend updates that document in MongoDB (`status = ACKNOWLEDGED`, plus `acknowledgedAt`).
+4. Frontend shows a success toast and reloads the list with `GET /api/incidents`.
+
+### How Resolve works
+
+1. User clicks **Resolve** on an open or acknowledged incident.
+2. Frontend calls `POST /api/incidents/{id}/resolve` with the JWT.
+3. Backend updates that document in MongoDB (`status = RESOLVED`, plus `resolvedAt`).
+4. Frontend shows a success toast and reloads the list with `GET /api/incidents`.
+
+If the API call fails, a toast says the action failed and the database is **not** changed.
+
+You can confirm this in the browser **Network** tab: Resolve should show a `POST` to `/incidents/{id}/resolve`, then a `GET` to refresh the list.
+
+### Listing and filters
+
+- Incidents are loaded with `GET /api/incidents?page=&limit=&status=&severity=&type=&workerId=`.
+- Allowed **types** match the backend: `HIGH_TEMPERATURE`, `LOW_BATTERY`, `FALL_DETECTED`, `NO_MOVEMENT`, `GEOFENCE_BREACH`, `SOS`.
+- Allowed **severities** for filtering: `HIGH`, `CRITICAL`.
+- Search is applied in the frontend after the list is fetched (the backend does not have a `search` query param).
+- Expanding a row shows description, timestamps, location, and notes.
+
+### Key files
+
+| File | Role |
+|---|---|
+| `src/pages/Incidents.tsx` | Incident list UI, filters, Acknowledge / Resolve buttons |
+| `src/api/incidents.ts` | `getIncidents()`, `acknowledgeIncident()`, `resolveIncident()` |
+| `src/hooks/useIncidents.ts` | Loads and refreshes the incident list |
+| `src/types/incident.ts` | Incident types, statuses, and filter shapes |
 
 ---
 
@@ -236,9 +290,9 @@ All endpoints are prefixed with `/api`.
 
 | Method | Path | Auth required | Description |
 |---|---|---|---|
-| `GET` | `/incidents` | Yes | List incidents (`?page&limit&status&severity`) |
-| `POST` | `/incidents/:id/acknowledge` | Yes | Move `OPEN → ACKNOWLEDGED` |
-| `POST` | `/incidents/:id/resolve` | Yes | Move `ACKNOWLEDGED → RESOLVED` |
+| `GET` | `/incidents` | Yes | List incidents (`?page&limit&status&severity&type&workerId`) |
+| `POST` | `/incidents/:id/acknowledge` | Yes | Save `OPEN → ACKNOWLEDGED` in MongoDB |
+| `POST` | `/incidents/:id/resolve` | Yes | Save `OPEN` or `ACKNOWLEDGED → RESOLVED` in MongoDB |
 
 ### Events
 

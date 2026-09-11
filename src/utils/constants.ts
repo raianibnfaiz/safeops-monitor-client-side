@@ -86,15 +86,12 @@ export const WORKER_STATUS_CONFIG: Record<
 };
 
 export const INCIDENT_TYPE_LABELS: Record<string, string> = {
-  fall_detected: 'Fall Detected',
-  sos_triggered: 'SOS Triggered',
-  no_motion: 'No Motion',
-  restricted_area: 'Restricted Area',
-  equipment_fault: 'Equipment Fault',
-  gas_leak: 'Gas Leak',
-  fire_alert: 'Fire Alert',
-  medical: 'Medical',
-  other: 'Other',
+  HIGH_TEMPERATURE: 'High Temperature',
+  LOW_BATTERY: 'Low Battery',
+  FALL_DETECTED: 'Fall Detected',
+  NO_MOVEMENT: 'No Movement',
+  GEOFENCE_BREACH: 'Geofence Breach',
+  SOS: 'SOS',
 };
 
 export const PAGE_SIZE = 10;

@@ -1,6 +1,7 @@
 import { apiClient } from './client';
 import type {
   Incident,
+  IncidentType,
   IncidentsResponse,
   IncidentFilters,
   IncidentStats,
@@ -8,36 +9,153 @@ import type {
   SafetyEvent,
   IncidentSeverity,
 } from '@/types';
+import { INCIDENT_TYPES } from '@/types';
 
-// ---------------------------------------------------------------------------
-// Response normaliser — handles multiple common Express/Mongoose shapes
-// ---------------------------------------------------------------------------
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return null;
+}
+
+function unwrapIncidentDocument(raw: unknown): Record<string, unknown> {
+  const record = asRecord(raw) ?? {};
+  const nested = asRecord(record.data);
+  return nested ?? record;
+}
+
+function normaliseIncidentNote(raw: unknown, fallbackId: string): IncidentNote {
+  const note = asRecord(raw) ?? {};
+  return {
+    id: String(note._id ?? note.id ?? fallbackId),
+    author: String(note.author ?? note.createdBy ?? 'Unknown'),
+    content: String(note.content ?? note.text ?? note.message ?? ''),
+    createdAt: String(note.createdAt ?? note.created_at ?? new Date().toISOString()),
+  };
+}
+
+function normaliseIncidentType(raw: unknown): IncidentType {
+  const normalised = String(raw ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+
+  const aliases: Record<string, IncidentType> = {
+    FALL_DETECTED: 'FALL_DETECTED',
+    FALL: 'FALL_DETECTED',
+    SOS: 'SOS',
+    SOS_TRIGGERED: 'SOS',
+    NO_MOVEMENT: 'NO_MOVEMENT',
+    NO_MOTION: 'NO_MOVEMENT',
+    GEOFENCE_BREACH: 'GEOFENCE_BREACH',
+    RESTRICTED_AREA: 'GEOFENCE_BREACH',
+    ZONE_BREACH: 'GEOFENCE_BREACH',
+    HIGH_TEMPERATURE: 'HIGH_TEMPERATURE',
+    FIRE_ALERT: 'HIGH_TEMPERATURE',
+    LOW_BATTERY: 'LOW_BATTERY',
+    BATTERY: 'LOW_BATTERY',
+  };
+
+  if (aliases[normalised]) return aliases[normalised];
+  if ((INCIDENT_TYPES as string[]).includes(normalised)) {
+    return normalised as IncidentType;
+  }
+  return 'SOS';
+}
+
+function toIncidentQueryParams(filters?: IncidentFilters): Record<string, string | number> | undefined {
+  if (!filters) return undefined;
+
+  const params: Record<string, string | number> = {};
+
+  if (filters.status) params.status = filters.status;
+  if (filters.severity === 'HIGH' || filters.severity === 'CRITICAL') {
+    params.severity = filters.severity;
+  }
+  if (filters.type && (INCIDENT_TYPES as string[]).includes(filters.type)) {
+    params.type = filters.type;
+  }
+  if (filters.workerId) params.workerId = filters.workerId;
+  if (filters.page) params.page = filters.page;
+  if (filters.limit) params.limit = filters.limit;
+
+  return params;
+}
+
+/**
+ * Map a raw Mongo/Express incident document onto our Incident type.
+ * Backend typically sends `_id` instead of `id`, which made React keys undefined.
+ */
+function normaliseIncident(raw: unknown): Incident {
+  const document = unwrapIncidentDocument(raw);
+  const location = asRecord(document.location);
+  const rawNotes = Array.isArray(document.notes) ? document.notes : [];
+  const id = String(document._id ?? document.id ?? document.incidentId ?? '');
+
+  return {
+    id,
+    incidentId: String(document.incidentId ?? document.incident_id ?? id),
+    title: String(document.title ?? document.message ?? 'Untitled incident'),
+    description: (document.description ?? document.details) as string | undefined,
+    type: normaliseIncidentType(document.type),
+    severity: (document.severity as Incident['severity']) ?? 'LOW',
+    status: (document.status as Incident['status']) ?? 'OPEN',
+    workerId: (document.workerId ?? document.worker_id) as string | undefined,
+    workerName: (document.workerName ?? document.worker_name ??
+      asRecord(document.worker)?.name) as string | undefined,
+    deviceId: (document.deviceId ?? document.device_id) as string | undefined,
+    location: location
+      ? {
+          latitude: Number(location.latitude ?? location.lat) || undefined,
+          longitude: Number(location.longitude ?? location.lng ?? location.lon) || undefined,
+          address: location.address as string | undefined,
+          zone: (location.zone ?? location.area) as string | undefined,
+        }
+      : undefined,
+    notes: rawNotes.map((note, noteIndex) =>
+      normaliseIncidentNote(note, `${id}-note-${noteIndex}`),
+    ),
+    acknowledgedBy: (document.acknowledgedBy ?? document.acknowledged_by) as string | undefined,
+    acknowledgedAt: (document.acknowledgedAt ?? document.acknowledged_at) as string | undefined,
+    resolvedBy: (document.resolvedBy ?? document.resolved_by) as string | undefined,
+    resolvedAt: (document.resolvedAt ?? document.resolved_at) as string | undefined,
+    createdAt: String(document.createdAt ?? document.created_at ?? new Date().toISOString()),
+    updatedAt: String(document.updatedAt ?? document.updated_at ?? document.createdAt ?? new Date().toISOString()),
+  };
+}
+
+function extractIncidentList(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+
+  const record = asRecord(raw);
+  if (!record) return [];
+
+  const nestedData = asRecord(record.data);
+  if (nestedData) return extractIncidentList(nestedData);
+
+  if (Array.isArray(record.incidents)) return record.incidents;
+  if (Array.isArray(record.data)) return record.data;
+  if (Array.isArray(record.results)) return record.results;
+  return [];
+}
+
 function normaliseIncidentsResponse(raw: unknown): IncidentsResponse {
-  if (Array.isArray(raw)) {
-    return { incidents: raw as Incident[], total: (raw as Incident[]).length, page: 1, pageSize: (raw as Incident[]).length };
-  }
-  const r = raw as Record<string, unknown>;
+  const record = asRecord(raw) ?? {};
+  const incidents = extractIncidentList(raw).map(normaliseIncident);
 
-  if (r.data && typeof r.data === 'object' && !Array.isArray(r.data)) {
-    return normaliseIncidentsResponse(r.data);
-  }
-
-  const incidents =
-    (r.incidents as Incident[] | undefined) ??
-    (r.data as Incident[] | undefined) ??
-    (r.results as Incident[] | undefined) ??
-    [];
-
-  const total =
-    (r.total as number | undefined) ??
-    (r.count as number | undefined) ??
-    (r.totalCount as number | undefined) ??
-    incidents.length;
-
-  const page = (r.page as number | undefined) ?? 1;
-  const pageSize = (r.limit as number | undefined) ?? (r.pageSize as number | undefined) ?? incidents.length;
-
-  return { incidents, total, page, pageSize };
+  return {
+    incidents,
+    total:
+      (record.total as number | undefined) ??
+      (record.count as number | undefined) ??
+      (record.totalCount as number | undefined) ??
+      incidents.length,
+    page: (record.page as number | undefined) ?? 1,
+    pageSize:
+      (record.limit as number | undefined) ??
+      (record.pageSize as number | undefined) ??
+      incidents.length,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -123,34 +241,54 @@ function computeStats(incidents: Incident[]): IncidentStats {
 
 export const incidentsApi = {
   getIncidents: async (filters?: IncidentFilters): Promise<IncidentsResponse> => {
-    const { data } = await apiClient.get('/incidents', { params: filters });
-    return normaliseIncidentsResponse(data);
+    const { data } = await apiClient.get('/incidents', {
+      params: toIncidentQueryParams(filters),
+    });
+    const result = normaliseIncidentsResponse(data);
+
+    const searchTerm = filters?.search?.trim().toLowerCase();
+    if (!searchTerm) return result;
+
+    const matchingIncidents = result.incidents.filter((incident) => {
+      const haystack = [
+        incident.title,
+        incident.description,
+        incident.workerName,
+        incident.type,
+        incident.incidentId,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(searchTerm);
+    });
+
+    return {
+      ...result,
+      incidents: matchingIncidents,
+      total: matchingIncidents.length,
+    };
   },
 
   getIncident: async (id: string): Promise<Incident> => {
-    const { data } = await apiClient.get<{ data?: Incident } | Incident>(`/incidents/${id}`);
-    if (data && typeof data === 'object' && 'data' in data && data.data) return data.data;
-    return data as Incident;
+    const { data } = await apiClient.get(`/incidents/${id}`);
+    return normaliseIncident(data);
   },
 
   acknowledgeIncident: async (id: string, note?: string): Promise<Incident> => {
-    // Backend uses POST /incidents/:id/acknowledge
-    const { data } = await apiClient.post<{ data?: Incident } | Incident>(
+    const { data } = await apiClient.post(
       `/incidents/${id}/acknowledge`,
       note ? { note } : {},
     );
-    if (data && typeof data === 'object' && 'data' in data && data.data) return data.data;
-    return data as Incident;
+    return normaliseIncident(data);
   },
 
   resolveIncident: async (id: string, note?: string): Promise<Incident> => {
-    // Backend uses POST /incidents/:id/resolve
-    const { data } = await apiClient.post<{ data?: Incident } | Incident>(
+    const { data } = await apiClient.post(
       `/incidents/${id}/resolve`,
       note ? { note } : {},
     );
-    if (data && typeof data === 'object' && 'data' in data && data.data) return data.data;
-    return data as Incident;
+    return normaliseIncident(data);
   },
 
   addNote: async (id: string, content: string): Promise<IncidentNote> => {

@@ -22,12 +22,14 @@ import { incidentsApi } from '@/api';
 import { useToast } from '@/contexts/ToastContext';
 import { formatRelativeTime, formatDateTime } from '@/utils/formatters';
 import { INCIDENT_TYPE_LABELS, PAGE_SIZE } from '@/utils/constants';
-import type {
-  IncidentStatus,
-  IncidentSeverity,
-  IncidentType,
-  IncidentFilters,
-  Incident,
+import {
+  INCIDENT_TYPES,
+  INCIDENT_FILTER_SEVERITIES,
+  type IncidentStatus,
+  type IncidentSeverity,
+  type IncidentType,
+  type IncidentFilters,
+  type Incident,
 } from '@/types';
 
 const STATUS_OPTIONS: { value: IncidentStatus | ''; label: string }[] = [
@@ -39,17 +41,17 @@ const STATUS_OPTIONS: { value: IncidentStatus | ''; label: string }[] = [
 
 const SEVERITY_OPTIONS: { value: IncidentSeverity | ''; label: string }[] = [
   { value: '', label: 'All Severities' },
-  { value: 'CRITICAL', label: 'Critical' },
-  { value: 'HIGH', label: 'High' },
-  { value: 'MEDIUM', label: 'Medium' },
-  { value: 'LOW', label: 'Low' },
+  ...INCIDENT_FILTER_SEVERITIES.map((severity) => ({
+    value: severity,
+    label: severity === 'CRITICAL' ? 'Critical' : 'High',
+  })),
 ];
 
 const TYPE_OPTIONS: { value: IncidentType | ''; label: string }[] = [
   { value: '', label: 'All Types' },
-  ...Object.entries(INCIDENT_TYPE_LABELS).map(([value, label]) => ({
-    value: value as IncidentType,
-    label,
+  ...INCIDENT_TYPES.map((type) => ({
+    value: type,
+    label: INCIDENT_TYPE_LABELS[type] ?? type,
   })),
 ];
 
@@ -185,12 +187,13 @@ export default function Incidents() {
           </Card>
         ) : (
           incidents.map((incident) => {
-            const isExpanded = expandedId === incident.id;
-            const isProcessing = processingIds.has(incident.id);
+            const incidentKey = incident.id || incident.incidentId;
+            const isExpanded = expandedId === incidentKey;
+            const isProcessing = processingIds.has(incidentKey);
 
             return (
               <Card
-                key={incident.id}
+                key={incidentKey}
                 padding="none"
                 className={clsx(
                   'overflow-hidden transition-shadow hover:shadow-md',
@@ -203,7 +206,7 @@ export default function Incidents() {
                 {/* Header row */}
                 <div
                   className="px-5 py-4 flex items-start gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/20 transition-colors"
-                  onClick={() => setExpandedId(isExpanded ? null : incident.id)}
+                  onClick={() => setExpandedId(isExpanded ? null : incidentKey)}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -308,7 +311,7 @@ export default function Incidents() {
                         <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Notes</p>
                         <div className="space-y-2">
                           {incident.notes.map((note) => (
-                            <div key={note.id} className="text-sm bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-100 dark:border-gray-700">
+                            <div key={note.id || `${incidentKey}-${note.createdAt}`} className="text-sm bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-100 dark:border-gray-700">
                               <p className="text-gray-700 dark:text-gray-300">{note.content}</p>
                               <p className="text-xs text-gray-400 mt-1">
                                 {note.author} · {formatRelativeTime(note.createdAt)}

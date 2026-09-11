@@ -1,15 +1,25 @@
 export type IncidentStatus = 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED';
 export type IncidentSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+
+// Matches backend EVENT_TYPES in safeops-monitor-server-side
 export type IncidentType =
-  | 'fall_detected'
-  | 'sos_triggered'
-  | 'no_motion'
-  | 'restricted_area'
-  | 'equipment_fault'
-  | 'gas_leak'
-  | 'fire_alert'
-  | 'medical'
-  | 'other';
+  | 'HIGH_TEMPERATURE'
+  | 'LOW_BATTERY'
+  | 'FALL_DETECTED'
+  | 'NO_MOVEMENT'
+  | 'GEOFENCE_BREACH'
+  | 'SOS';
+
+export const INCIDENT_TYPES: IncidentType[] = [
+  'HIGH_TEMPERATURE',
+  'LOW_BATTERY',
+  'FALL_DETECTED',
+  'NO_MOVEMENT',
+  'GEOFENCE_BREACH',
+  'SOS',
+];
+
+export const INCIDENT_FILTER_SEVERITIES: IncidentSeverity[] = ['CRITICAL', 'HIGH'];
 
 export interface IncidentLocation {
   latitude?: number;

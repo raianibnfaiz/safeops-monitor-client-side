@@ -228,7 +228,7 @@ export default function WorkerDetails() {
         ) : (
           <div className="divide-y divide-gray-100 dark:divide-gray-700">
             {incidents.map((inc) => (
-              <div key={inc.id} className="py-3 flex items-start gap-3">
+              <div key={inc.id || inc.incidentId} className="py-3 flex items-start gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium text-gray-900 dark:text-white truncate">

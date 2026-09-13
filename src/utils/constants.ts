@@ -59,29 +59,17 @@ export const WORKER_STATUS_CONFIG: Record<
   WorkerStatus,
   { label: string; bgColor: string; textColor: string; dotColor: string }
 > = {
-  active: {
+  ACTIVE: {
     label: 'Active',
     bgColor: 'bg-green-100 dark:bg-green-900/30',
     textColor: 'text-green-700 dark:text-green-400',
     dotColor: 'bg-green-500',
   },
-  inactive: {
+  INACTIVE: {
     label: 'Inactive',
-    bgColor: 'bg-gray-100 dark:bg-gray-700',
-    textColor: 'text-gray-600 dark:text-gray-400',
-    dotColor: 'bg-gray-400',
-  },
-  offline: {
-    label: 'Offline',
     bgColor: 'bg-slate-100 dark:bg-slate-700',
     textColor: 'text-slate-600 dark:text-slate-400',
     dotColor: 'bg-slate-400',
-  },
-  emergency: {
-    label: 'Emergency',
-    bgColor: 'bg-red-100 dark:bg-red-900/30',
-    textColor: 'text-red-700 dark:text-red-400',
-    dotColor: 'bg-red-500 animate-pulse',
   },
 };
 
@@ -92,6 +80,27 @@ export const INCIDENT_TYPE_LABELS: Record<string, string> = {
   NO_MOVEMENT: 'No Movement',
   GEOFENCE_BREACH: 'Geofence Breach',
   SOS: 'SOS',
+};
+
+export const EVENT_SEVERITY_STYLES: Record<
+  string,
+  { label: string; bgColor: string; textColor: string }
+> = {
+  CRITICAL: {
+    label: 'Critical',
+    bgColor: 'bg-red-100 dark:bg-red-900/30',
+    textColor: 'text-red-700 dark:text-red-400',
+  },
+  HIGH: {
+    label: 'High',
+    bgColor: 'bg-orange-100 dark:bg-orange-900/30',
+    textColor: 'text-orange-700 dark:text-orange-400',
+  },
+  WARNING: {
+    label: 'Warning',
+    bgColor: 'bg-yellow-100 dark:bg-yellow-900/30',
+    textColor: 'text-yellow-700 dark:text-yellow-400',
+  },
 };
 
 export const PAGE_SIZE = 10;

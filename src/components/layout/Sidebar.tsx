@@ -3,6 +3,8 @@ import {
   LayoutDashboard,
   Users,
   AlertTriangle,
+  Smartphone,
+  Radio,
   Shield,
   LogOut,
   ChevronLeft,
@@ -16,6 +18,8 @@ import { useSocketContext } from '@/contexts/SocketContext';
 const NAV_ITEMS = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/workers', icon: Users, label: 'Workers' },
+  { to: '/devices', icon: Smartphone, label: 'Devices' },
+  { to: '/events', icon: Radio, label: 'Events' },
   { to: '/incidents', icon: AlertTriangle, label: 'Incidents' },
 ];
 
@@ -64,7 +68,7 @@ export function Sidebar() {
               clsx(
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
                 collapsed && 'justify-center',
-                isActive || location.pathname.startsWith(to)
+                isActive || (to !== '/dashboard' && location.pathname.startsWith(to))
                   ? 'bg-primary-600 text-white'
                   : 'text-gray-400 hover:text-white hover:bg-gray-700/50',
               )

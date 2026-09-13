@@ -1,5 +1,5 @@
-export type WorkerStatus = 'active' | 'inactive' | 'offline' | 'emergency';
-export type DeviceStatus = 'online' | 'offline' | 'low_battery' | 'charging';
+export type WorkerStatus = 'ACTIVE' | 'INACTIVE';
+export type DeviceStatus = 'ACTIVE' | 'INACTIVE';
 
 export interface Location {
   latitude: number;

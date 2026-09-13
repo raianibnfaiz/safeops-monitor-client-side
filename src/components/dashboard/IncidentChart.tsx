@@ -29,9 +29,9 @@ export function IncidentsByDayChart({ data }: IncidentsByDayChartProps) {
           <XAxis
             dataKey="date"
             tick={{ fontSize: 11, fill: '#6b7280' }}
-            tickFormatter={(v: string) => {
-              const d = new Date(v);
-              return d.toLocaleDateString('en-US', { weekday: 'short' });
+            tickFormatter={(dateValue: string) => {
+              const date = new Date(dateValue);
+              return date.toLocaleDateString('en-US', { weekday: 'short' });
             }}
           />
           <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} allowDecimals={false} />
@@ -43,7 +43,7 @@ export function IncidentsByDayChart({ data }: IncidentsByDayChartProps) {
               fontSize: '12px',
               color: '#f9fafb',
             }}
-            labelFormatter={(v: string) => new Date(v).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+            labelFormatter={(dateValue: string) => new Date(dateValue).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
           />
           <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Incidents" />
         </BarChart>
@@ -57,10 +57,10 @@ interface IncidentsBySeverityChartProps {
 }
 
 export function IncidentsBySeverityChart({ data }: IncidentsBySeverityChartProps) {
-  const chartData = data.map((d) => ({
-    name: SEVERITY_CONFIG[d.severity].label,
-    value: d.count,
-    color: SEVERITY_CONFIG[d.severity].color,
+  const chartData = data.map((severityRow) => ({
+    name: SEVERITY_CONFIG[severityRow.severity].label,
+    value: severityRow.count,
+    color: SEVERITY_CONFIG[severityRow.severity].color,
   }));
 
   return (
@@ -93,7 +93,7 @@ export function IncidentsBySeverityChart({ data }: IncidentsBySeverityChartProps
           <Legend
             iconType="circle"
             iconSize={8}
-            formatter={(v) => <span style={{ fontSize: 12, color: '#9ca3af' }}>{v}</span>}
+            formatter={(label) => <span style={{ fontSize: 12, color: '#9ca3af' }}>{label}</span>}
           />
         </PieChart>
       </ResponsiveContainer>

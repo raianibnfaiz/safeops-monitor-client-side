@@ -20,7 +20,7 @@ All code generation, debugging, and refinement happened inside **Cursor** using 
 
 ## 2. Important Prompts Used During Development
 
-Below are the 8 most significant prompts used, written exactly as submitted or paraphrased faithfully, along with what the AI produced and what I changed.
+Below are the 9 most significant prompts used, written exactly as submitted or paraphrased faithfully, along with what the AI produced and what I changed.
 
 ---
 
@@ -210,4 +210,39 @@ Fix the socket event subscriptions to match the actual backend.
 
 **What I decided / changed:**
 - Kept `'safety:event'` also wired on Workers page to trigger a list refresh — AI initially only put it on Dashboard.
+
+---
+
+### Prompt 8 — Device list page with assigned worker names
+
+```
+Create a new route to display the device list. Show every device with all
+its available properties. Also, using the assignedTo field, look up and
+display the corresponding worker’s name next to each device.
+
+Example device document:
+{
+  _id: ObjectId('6aa629afb9604aa1edf0a1dc'),
+  deviceId: 'SAFEOPS-1000',
+  worker: ObjectId('6aa629afb9604aa1edf0a1c8'),
+  assignedTo: 'W-101',
+  batteryLevel: 72,
+  temperature: 38,
+  geofenceStatus: 'INSIDE',
+  status: 'ACTIVE',
+  lastSeenAt: ISODate('2026-09-13T04:42:23.477Z'),
+  createdAt: ISODate('2026-09-13T04:42:23.478Z'),
+  updatedAt: ISODate('2026-09-13T04:42:23.478Z')
+}
+```
+
+**What AI generated:**
+- `FieldDevice` type matching the MongoDB device document
+- `GET /api/devices` client plus worker lookup by `assignedTo` (`W-101`) and `worker` ObjectId
+- Protected `/devices` route, sidebar link, and a table of all device fields
+- Worker name links through to Worker Details when a match is found
+
+**What I decided / changed:**
+- Looked up names from `GET /api/workers` instead of assuming `/devices` populates the worker
+- Kept unknown extra Mongo fields in an “Other fields” column so the list stays complete if the schema grows
 

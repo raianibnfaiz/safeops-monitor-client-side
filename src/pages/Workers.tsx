@@ -8,6 +8,7 @@ import { BatteryIndicator } from '@/components/common/BatteryIndicator';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorAlert } from '@/components/common/ErrorAlert';
+import { FilterSelect } from '@/components/common/FilterSelect';
 import { useWorkers } from '@/hooks/useWorkers';
 import { useSocketEvent } from '@/hooks/useSocket';
 import { formatRelativeTime } from '@/utils/formatters';
@@ -16,10 +17,8 @@ import type { WorkerStatus, WorkerFilters } from '@/types';
 
 const STATUS_OPTIONS: { value: WorkerStatus | ''; label: string }[] = [
   { value: '', label: 'All Statuses' },
-  { value: 'active', label: 'Active' },
-  { value: 'inactive', label: 'Inactive' },
-  { value: 'offline', label: 'Offline' },
-  { value: 'emergency', label: 'Emergency' },
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'INACTIVE', label: 'Inactive' },
 ];
 
 export default function Workers() {
@@ -27,19 +26,18 @@ export default function Workers() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [search, setSearch] = useState(searchParams.get('search') ?? '');
-  const [status, setStatus] = useState<WorkerStatus | ''>('');
+  const [statusFilter, setStatusFilter] = useState<WorkerStatus | ''>('');
   const [page, setPage] = useState(1);
   const [debouncedSearch, setDebouncedSearch] = useState(search);
 
-  // Debounce search
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 400);
-    return () => clearTimeout(t);
+    const debounceTimer = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(debounceTimer);
   }, [search]);
 
   const filters: WorkerFilters = {
     search: debouncedSearch || undefined,
-    status: status || undefined,
+    status: statusFilter || undefined,
     page,
     limit: PAGE_SIZE,
   };
@@ -53,11 +51,12 @@ export default function Workers() {
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearch(e.target.value);
+  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const searchValue = event.target.value;
+    setSearch(searchValue);
     setPage(1);
-    if (e.target.value) {
-      setSearchParams({ search: e.target.value });
+    if (searchValue) {
+      setSearchParams({ search: searchValue });
     } else {
       setSearchParams({});
     }
@@ -84,24 +83,15 @@ export default function Workers() {
           />
         </div>
 
-        {/* Status filter */}
-        <div className="relative">
-          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          <select
-            value={status}
-            onChange={(e) => { setStatus(e.target.value as WorkerStatus | ''); setPage(1); }}
-            className={clsx(
-              'pl-9 pr-8 py-2.5 rounded-lg border text-sm appearance-none cursor-pointer',
-              'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700',
-              'text-gray-900 dark:text-white',
-              'focus:outline-none focus:ring-2 focus:ring-primary-500',
-            )}
-          >
-            {STATUS_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </div>
+        <FilterSelect
+          value={statusFilter}
+          onChange={(selectedValue) => {
+            setStatusFilter(selectedValue as WorkerStatus | '');
+            setPage(1);
+          }}
+          options={STATUS_OPTIONS}
+          icon={<Filter className="w-4 h-4 text-gray-400" />}
+        />
 
         {/* Refresh */}
         <button

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import {
   AlertTriangle,
   Filter,
@@ -16,12 +16,13 @@ import { SeverityBadge, StatusBadge } from '@/components/common/Badge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorAlert } from '@/components/common/ErrorAlert';
+import { FilterSelect } from '@/components/common/FilterSelect';
 import { useIncidents } from '@/hooks/useIncidents';
 import { useSocketEvent } from '@/hooks/useSocket';
 import { incidentsApi } from '@/api';
 import { useToast } from '@/contexts/ToastContext';
 import { formatRelativeTime, formatDateTime } from '@/utils/formatters';
-import { INCIDENT_TYPE_LABELS, PAGE_SIZE } from '@/utils/constants';
+import { INCIDENT_TYPE_LABELS } from '@/utils/constants';
 import {
   INCIDENT_TYPES,
   INCIDENT_FILTER_SEVERITIES,
@@ -55,6 +56,8 @@ const TYPE_OPTIONS: { value: IncidentType | ''; label: string }[] = [
   })),
 ];
 
+const INCIDENTS_PAGE_SIZE = 20;
+
 export default function Incidents() {
   const [statusFilter, setStatusFilter] = useState<IncidentStatus | ''>('');
   const [severityFilter, setSeverityFilter] = useState<IncidentSeverity | ''>('');
@@ -66,40 +69,67 @@ export default function Incidents() {
 
   const { success, error: toastError } = useToast();
 
-  const filters: IncidentFilters = {
+  const apiFilters: IncidentFilters = {
     status: statusFilter || undefined,
     severity: severityFilter || undefined,
     type: typeFilter || undefined,
-    search: search || undefined,
     page,
-    limit: PAGE_SIZE,
+    limit: INCIDENTS_PAGE_SIZE,
   };
 
-  const { incidents, total, isLoading, error, refetch } = useIncidents(filters);
+  const {
+    incidents: pageIncidents,
+    total,
+    totalPages,
+    isLoading,
+    error,
+    refetch,
+  } = useIncidents(apiFilters);
 
-  // Real-time updates — backend emits 'safety:incident' for incident changes
+  const incidents = useMemo(() => {
+    const searchTerm = search.trim().toLowerCase();
+    if (!searchTerm) return pageIncidents;
+
+    return pageIncidents.filter((incident) => {
+      const searchableText = [
+        incident.title,
+        incident.description,
+        incident.workerName,
+        incident.type,
+        incident.incidentId,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return searchableText.includes(searchTerm);
+    });
+  }, [pageIncidents, search]);
+
+  const currentPage = Math.min(page, Math.max(1, totalPages));
+
+  const refetchTimerRef = useRef<number | null>(null);
   useSocketEvent('safety:incident', useCallback(() => {
-    refetch();
+    if (refetchTimerRef.current) window.clearTimeout(refetchTimerRef.current);
+    refetchTimerRef.current = window.setTimeout(() => {
+      refetch();
+    }, 400);
   }, [refetch]));
 
-  // Also listen to general safety events that may affect incident list
-  useSocketEvent('safety:event', useCallback(() => {
-    refetch();
-  }, [refetch]));
-
-  const totalPages = Math.ceil(total / PAGE_SIZE);
-
-  const withLoading = async (id: string, fn: () => Promise<void>) => {
-    setProcessingIds((s) => new Set(s).add(id));
+  const runWithIncidentLoading = async (incidentId: string, action: () => Promise<void>) => {
+    setProcessingIds((currentIds) => new Set(currentIds).add(incidentId));
     try {
-      await fn();
+      await action();
     } finally {
-      setProcessingIds((s) => { const n = new Set(s); n.delete(id); return n; });
+      setProcessingIds((currentIds) => {
+        const nextIds = new Set(currentIds);
+        nextIds.delete(incidentId);
+        return nextIds;
+      });
     }
   };
 
   const acknowledge = async (incident: Incident) => {
-    await withLoading(incident.id, async () => {
+    await runWithIncidentLoading(incident.id, async () => {
       try {
         await incidentsApi.acknowledgeIncident(incident.id);
         success('Incident acknowledged', incident.title);
@@ -111,7 +141,7 @@ export default function Incidents() {
   };
 
   const resolve = async (incident: Incident) => {
-    await withLoading(incident.id, async () => {
+    await runWithIncidentLoading(incident.id, async () => {
       try {
         await incidentsApi.resolveIncident(incident.id);
         success('Incident resolved', incident.title);
@@ -140,19 +170,19 @@ export default function Incidents() {
 
         <FilterSelect
           value={statusFilter}
-          onChange={(v) => { setStatusFilter(v as IncidentStatus | ''); setPage(1); }}
+          onChange={(selectedValue) => { setStatusFilter(selectedValue as IncidentStatus | ''); setPage(1); }}
           options={STATUS_OPTIONS}
           icon={<Filter className="w-4 h-4 text-gray-400" />}
         />
         <FilterSelect
           value={severityFilter}
-          onChange={(v) => { setSeverityFilter(v as IncidentSeverity | ''); setPage(1); }}
+          onChange={(selectedValue) => { setSeverityFilter(selectedValue as IncidentSeverity | ''); setPage(1); }}
           options={SEVERITY_OPTIONS}
           icon={<AlertTriangle className="w-4 h-4 text-gray-400" />}
         />
         <FilterSelect
           value={typeFilter}
-          onChange={(v) => { setTypeFilter(v as IncidentType | ''); setPage(1); }}
+          onChange={(selectedValue) => { setTypeFilter(selectedValue as IncidentType | ''); setPage(1); }}
           options={TYPE_OPTIONS}
         />
 
@@ -173,9 +203,10 @@ export default function Incidents() {
 
       {/* Incident list */}
       <div className="space-y-3">
-        {isLoading && incidents.length === 0 ? (
-          <Card className="flex items-center justify-center py-20">
+        {isLoading ? (
+          <Card className="flex flex-col items-center justify-center gap-3 py-20">
             <LoadingSpinner size="lg" className="text-primary-600" />
+            <p className="text-sm text-gray-500 dark:text-gray-400">Loading incidents…</p>
           </Card>
         ) : incidents.length === 0 ? (
           <Card>
@@ -332,18 +363,18 @@ export default function Incidents() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Page {page} of {totalPages}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Page {currentPage} of {totalPages}</p>
           <div className="flex gap-2">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
+              disabled={isLoading || currentPage === 1}
               className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-700"
             >
               Previous
             </button>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
+              disabled={isLoading || currentPage === totalPages}
               className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-700"
             >
               Next
@@ -351,41 +382,6 @@ export default function Incidents() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function FilterSelect({
-  value,
-  onChange,
-  options,
-  icon,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-  icon?: React.ReactNode;
-}) {
-  return (
-    <div className="relative">
-      {icon && (
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">{icon}</div>
-      )}
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={clsx(
-          'py-2.5 pr-8 rounded-lg border text-sm appearance-none cursor-pointer',
-          'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700',
-          'text-gray-900 dark:text-white',
-          'focus:outline-none focus:ring-2 focus:ring-primary-500',
-          icon ? 'pl-9' : 'pl-3',
-        )}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
     </div>
   );
 }

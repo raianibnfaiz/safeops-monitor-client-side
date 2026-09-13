@@ -80,14 +80,14 @@ export default function Dashboard() {
           color="green"
         />
         <StatCard
-          title="Online Devices"
-          value={stats?.onlineDevices ?? 0}
+          title="Active Devices"
+          value={stats?.activeDevices ?? 0}
           icon={Wifi}
           color="purple"
         />
         <StatCard
-          title="Offline Devices"
-          value={stats?.offlineDevices ?? 0}
+          title="Inactive Devices"
+          value={stats?.inactiveDevices ?? 0}
           icon={WifiOff}
           color="orange"
         />
@@ -98,7 +98,7 @@ export default function Dashboard() {
           color="red"
         />
         <StatCard
-          title="Critical Alerts"
+          title="Critical Incidents"
           value={stats?.criticalIncidents ?? 0}
           icon={ShieldAlert}
           color="red"
@@ -148,8 +148,8 @@ export default function Dashboard() {
             <StatusRow
               label="Database"
               status={
-                stats?.systemHealthRaw
-                  ? String(stats.systemHealthRaw.database).toLowerCase().includes('connect')
+                stats?.systemHealthDetails
+                  ? String(stats.systemHealthDetails.database).toLowerCase().includes('connect')
                     ? 'operational'
                     : 'down'
                   : isHealthy ? 'operational' : 'down'
@@ -164,8 +164,8 @@ export default function Dashboard() {
             <StatusRow
               label="Event Simulator"
               status={
-                stats?.systemHealthRaw
-                  ? stats.systemHealthRaw.simulator ? 'operational' : 'degraded'
+                stats?.systemHealthDetails
+                  ? stats.systemHealthDetails.simulator ? 'operational' : 'degraded'
                   : 'operational'
               }
             />
@@ -175,19 +175,19 @@ export default function Dashboard() {
               status={isHealthy ? 'operational' : isDegraded ? 'degraded' : 'down'}
             />
 
-            {/* Live metrics from systemHealthRaw */}
-            {stats?.systemHealthRaw && (
+            {/* Live metrics from systemHealthDetails */}
+            {stats?.systemHealthDetails && (
               <div className="pt-3 border-t border-gray-100 dark:border-gray-700 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500 dark:text-gray-400">Clients connected</span>
                   <span className="font-semibold text-gray-900 dark:text-white">
-                    {stats.systemHealthRaw.clientsConnected}
+                    {stats.systemHealthDetails.clientsConnected}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500 dark:text-gray-400">Uptime</span>
                   <span className="font-semibold text-gray-900 dark:text-white">
-                    {formatUptime(stats.systemHealthRaw.uptimeSeconds)}
+                    {formatUptime(stats.systemHealthDetails.uptimeSeconds)}
                   </span>
                 </div>
               </div>

@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Smartphone, Clock, Activity, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, MapPin, Smartphone, Clock, Activity, AlertTriangle, Battery } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader } from '@/components/common/Card';
@@ -13,7 +13,18 @@ import { useSocketEvent } from '@/hooks/useSocket';
 import { workersApi, incidentsApi } from '@/api';
 import { formatRelativeTime, formatCoordinates } from '@/utils/formatters';
 import { INCIDENT_TYPE_LABELS } from '@/utils/constants';
-import type { WorkerActivity, Incident } from '@/types';
+import type { DeviceStatus, WorkerActivity, Incident } from '@/types';
+
+const DEVICE_STATUS_LABELS: Record<DeviceStatus, string> = {
+  ACTIVE: 'Active',
+  INACTIVE: 'Inactive',
+};
+
+function deviceStatusClassName(status: DeviceStatus): string {
+  return status === 'ACTIVE'
+    ? 'text-green-600 dark:text-green-400'
+    : 'text-gray-500 dark:text-gray-400';
+}
 
 export default function WorkerDetails() {
   const { id } = useParams<{ id: string }>();
@@ -22,20 +33,20 @@ export default function WorkerDetails() {
 
   const [activities, setActivities] = useState<WorkerActivity[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
-  const [loadingExtra, setLoadingExtra] = useState(true);
+  const [isLoadingRelatedData, setIsLoadingRelatedData] = useState(true);
 
   useEffect(() => {
     if (!id) return;
-    setLoadingExtra(true);
+    setIsLoadingRelatedData(true);
     Promise.all([
       workersApi.getWorkerActivity(id),
       incidentsApi.getIncidents({ workerId: id, limit: 10 }),
     ])
-      .then(([acts, incs]) => {
-        setActivities(acts);
-        setIncidents(incs.incidents);
+      .then(([activityList, incidentsResponse]) => {
+        setActivities(activityList);
+        setIncidents(incidentsResponse.incidents);
       })
-      .finally(() => setLoadingExtra(false));
+      .finally(() => setIsLoadingRelatedData(false));
   }, [id]);
 
   // Real-time updates for this worker
@@ -49,6 +60,13 @@ export default function WorkerDetails() {
 
   if (isLoading) return <PageLoader />;
   if (error || !worker) return <ErrorAlert message={error ?? 'Worker not found'} onRetry={refetch} />;
+
+  const assignedDevice = worker.device;
+  const isDeviceAssigned = Boolean(
+    assignedDevice &&
+    assignedDevice.deviceId &&
+    assignedDevice.deviceId !== '—',
+  );
 
   const ACTIVITY_ICONS: Record<WorkerActivity['type'], string> = {
     check_in: '✅',
@@ -103,27 +121,27 @@ export default function WorkerDetails() {
         <InfoTile
           icon={<Smartphone className="w-4 h-4" />}
           label="Device ID"
-          value={worker.device?.deviceId ?? worker.deviceId ?? '—'}
+          value={isDeviceAssigned ? assignedDevice?.deviceId : 'Unassigned'}
         />
         <InfoTile
           icon={<Activity className="w-4 h-4" />}
           label="Device Status"
           value={
-            worker.device ? (
-              <span className={clsx('capitalize', worker.device.status === 'online' ? 'text-green-600' : 'text-gray-500')}>
-                {worker.device.status.replace('_', ' ')}
+            assignedDevice ? (
+              <span className={deviceStatusClassName(assignedDevice.status)}>
+                {DEVICE_STATUS_LABELS[assignedDevice.status]}
               </span>
             ) : (
-              <span className="text-gray-400">Unknown</span>
+              <span className="text-gray-400">—</span>
             )
           }
         />
         <InfoTile
-          icon={<span />}
+          icon={<Battery className="w-4 h-4" />}
           label="Battery"
           value={
-            worker.device
-              ? <BatteryIndicator level={worker.device.batteryLevel} />
+            isDeviceAssigned && assignedDevice
+              ? <BatteryIndicator level={assignedDevice.batteryLevel} />
               : <span className="text-gray-400">—</span>
           }
         />
@@ -186,7 +204,7 @@ export default function WorkerDetails() {
             <CardHeader title="Recent Activity" className="mb-0" />
           </div>
           <div className="divide-y divide-gray-50 dark:divide-gray-700/50 max-h-[360px] overflow-y-auto">
-            {loadingExtra ? (
+            {isLoadingRelatedData ? (
               Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="px-6 py-3 flex gap-3">
                   <div className="w-6 h-6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
@@ -199,12 +217,12 @@ export default function WorkerDetails() {
             ) : activities.length === 0 ? (
               <EmptyState title="No activity" className="py-12" />
             ) : (
-              activities.map((act) => (
-                <div key={act.id} className="px-6 py-3 flex items-start gap-3">
-                  <span className="text-base flex-shrink-0">{ACTIVITY_ICONS[act.type] ?? '•'}</span>
+              activities.map((activity) => (
+                <div key={activity.id} className="px-6 py-3 flex items-start gap-3">
+                  <span className="text-base flex-shrink-0">{ACTIVITY_ICONS[activity.type] ?? '•'}</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-800 dark:text-gray-200">{act.description}</p>
-                    <p className="text-xs text-gray-400">{formatRelativeTime(act.timestamp)}</p>
+                    <p className="text-sm text-gray-800 dark:text-gray-200">{activity.description}</p>
+                    <p className="text-xs text-gray-400">{formatRelativeTime(activity.timestamp)}</p>
                   </div>
                 </div>
               ))
@@ -227,18 +245,18 @@ export default function WorkerDetails() {
           />
         ) : (
           <div className="divide-y divide-gray-100 dark:divide-gray-700">
-            {incidents.map((inc) => (
-              <div key={inc.id || inc.incidentId} className="py-3 flex items-start gap-3">
+            {incidents.map((incident) => (
+              <div key={incident.id || incident.incidentId} className="py-3 flex items-start gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                      {inc.title}
+                      {incident.title}
                     </span>
-                    <SeverityBadge severity={inc.severity} />
-                    <StatusBadge status={inc.status} />
+                    <SeverityBadge severity={incident.severity} />
+                    <StatusBadge status={incident.status} />
                   </div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    {INCIDENT_TYPE_LABELS[inc.type] ?? inc.type} · {formatRelativeTime(inc.createdAt)}
+                    {INCIDENT_TYPE_LABELS[incident.type] ?? incident.type} · {formatRelativeTime(incident.createdAt)}
                   </p>
                 </div>
               </div>

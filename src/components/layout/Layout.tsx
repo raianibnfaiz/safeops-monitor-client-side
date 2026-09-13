@@ -5,6 +5,8 @@ import { Header } from './Header';
 const PAGE_TITLES: Record<string, { title: string; subtitle?: string }> = {
   '/dashboard': { title: 'Dashboard', subtitle: 'System overview and real-time status' },
   '/workers': { title: 'Workers', subtitle: 'Field worker management' },
+  '/devices': { title: 'Devices', subtitle: 'IoT device inventory and assignment' },
+  '/events': { title: 'Events', subtitle: 'Safety event history' },
   '/incidents': { title: 'Incidents', subtitle: 'Safety incident tracking' },
 };
 

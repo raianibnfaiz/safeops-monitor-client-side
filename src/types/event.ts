@@ -1,4 +1,26 @@
+export type MonitorEventType =
+  | 'HIGH_TEMPERATURE'
+  | 'LOW_BATTERY'
+  | 'FALL_DETECTED'
+  | 'NO_MOVEMENT'
+  | 'GEOFENCE_BREACH'
+  | 'SOS';
+
+export const MONITOR_EVENT_TYPES: MonitorEventType[] = [
+  'HIGH_TEMPERATURE',
+  'LOW_BATTERY',
+  'FALL_DETECTED',
+  'NO_MOVEMENT',
+  'GEOFENCE_BREACH',
+  'SOS',
+];
+
+export type EventSeverity = 'WARNING' | 'HIGH' | 'CRITICAL';
+
+export const EVENT_SEVERITIES: EventSeverity[] = ['CRITICAL', 'HIGH', 'WARNING'];
+
 export type SafetyEventType =
+  | MonitorEventType
   | 'worker_online'
   | 'worker_offline'
   | 'incident_created'
@@ -17,15 +39,31 @@ export interface SafetyEvent {
   description: string;
   workerId?: string;
   workerName?: string;
+  deviceId?: string;
   incidentId?: string;
-  severity?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO';
+  severity?: EventSeverity | 'MEDIUM' | 'LOW' | 'INFO';
   timestamp: string;
   metadata?: Record<string, unknown>;
 }
 
-// Raw systemHealth object shape returned by the backend
-export interface SystemHealthRaw {
-  database: string;          // e.g. "connected" | "disconnected"
+export interface EventFilters {
+  search?: string;
+  severity?: EventSeverity;
+  eventType?: MonitorEventType;
+  page?: number;
+  limit?: number;
+}
+
+export interface EventsResponse {
+  events: SafetyEvent[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface SystemHealthDetails {
+  database: string;
   simulator: boolean;
   clientsConnected: number;
   uptimeSeconds: number;
@@ -34,16 +72,14 @@ export interface SystemHealthRaw {
 export interface DashboardStats {
   totalWorkers: number;
   activeWorkers: number;
-  offlineWorkers: number;
-  onlineDevices: number;
-  offlineDevices: number;
+  inactiveWorkers: number;
+  activeDevices: number;
+  inactiveDevices: number;
   openIncidents: number;
   criticalIncidents: number;
   resolvedToday: number;
-  // Normalised to a string after API response processing
   systemHealth: 'healthy' | 'degraded' | 'critical';
-  // Raw object from backend — preserved for the Status panel
-  systemHealthRaw?: SystemHealthRaw;
+  systemHealthDetails?: SystemHealthDetails;
   lastUpdated: string;
 }
 

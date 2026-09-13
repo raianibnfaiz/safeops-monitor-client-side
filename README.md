@@ -25,6 +25,7 @@ built with React 18, TypeScript, Vite, and Tailwind CSS.
 - **Authentication** — JWT login/logout, protected routes, automatic session restore
 - **Dashboard** — Live stat cards, incident charts (bar + pie), safety events feed, system health panel
 - **Workers Page** — Searchable, filterable table with status badges, battery level, pagination
+- **Devices Page** — Full device inventory; worker name resolved from `assignedTo`
 - **Worker Details** — Profile card, device info, location visualisation, activity feed, incident history
 - **Incidents Page** — Filterable list, expandable details, Acknowledge/Resolve actions saved to MongoDB via API
 - **Real-time** — Socket.IO auto-refreshes all pages; toast alerts for Critical/High severity events
@@ -190,12 +191,14 @@ src/
 │   ├── client.ts         # Axios instance + JWT request/response interceptors
 │   ├── auth.ts           # register, login, getCurrentUser, logout
 │   ├── workers.ts        # Worker + dashboard API calls
+│   ├── devices.ts        # Device list + worker-name lookup
 │   └── incidents.ts      # Incident + events API calls
 ├── socket/
 │   └── socketClient.ts   # Typed Socket.IO singleton
 ├── types/                # TypeScript interfaces
 │   ├── auth.ts           # AuthUser, LoginCredentials, AuthResponse
 │   ├── worker.ts         # Worker, Device, Location, WorkerFilters
+│   ├── device.ts         # FieldDevice from GET /devices
 │   ├── incident.ts       # Incident, IncidentStats, IncidentFilters
 │   └── event.ts          # SafetyEvent, DashboardStats, SocketEventMap
 ├── utils/
@@ -211,6 +214,7 @@ src/
 │   ├── useSocket.ts      # Subscribe to typed Socket.IO events
 │   ├── useWorkers.ts     # Fetch + cache workers list / single worker
 │   ├── useIncidents.ts   # Fetch + cache incidents + stats
+│   ├── useDevices.ts     # Fetch device list with assigned worker names
 │   └── useDashboard.ts  # Fetch dashboard stats + recent events
 ├── components/
 │   ├── common/           # Badge, Card, BatteryIndicator, Toast, EmptyState…
@@ -221,6 +225,7 @@ src/
     ├── Dashboard.tsx
     ├── Workers.tsx
     ├── WorkerDetails.tsx
+    ├── Devices.tsx
     └── Incidents.tsx
 ```
 
@@ -285,7 +290,7 @@ All endpoints are prefixed with `/api`.
 
 | Method | Path | Auth required | Description |
 |---|---|---|---|
-| `GET` | `/devices` | Yes | List all devices |
+| `GET` | `/devices` | Yes | List all devices (frontend also loads workers to resolve names) |
 | `GET` | `/devices/:id` | Yes | Single device |
 
 ### Incidents

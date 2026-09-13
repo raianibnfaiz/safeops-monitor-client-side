@@ -16,19 +16,19 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
   const [isConnected, setIsConnected] = useState(false);
   const [socketId, setSocketId] = useState<string | undefined>(undefined);
-  const initialized = useRef(false);
+  const hasConnected = useRef(false);
 
   useEffect(() => {
     if (!isAuthenticated) {
       socketService.disconnect();
       setIsConnected(false);
       setSocketId(undefined);
-      initialized.current = false;
+      hasConnected.current = false;
       return;
     }
 
-    if (initialized.current) return;
-    initialized.current = true;
+    if (hasConnected.current) return;
+    hasConnected.current = true;
 
     const socket = socketService.connect();
 

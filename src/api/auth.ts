@@ -92,8 +92,8 @@ export function extractErrorMessage(error: unknown): string {
  * Backend sends:     { success: true, token: "eyJ...", user: { _id, name, email, role } }
  * AuthResponse type: { token, user, expiresIn }
  */
-function parseLoginResponse(rawResponse: unknown): AuthResponse {
-  const responseBody = rawResponse as Record<string, unknown>;
+function parseLoginResponse(responsePayload: unknown): AuthResponse {
+  const responseBody = responsePayload as Record<string, unknown>;
 
   // Some backends wrap the payload in a `data` envelope
   const loginPayload =
@@ -104,14 +104,14 @@ function parseLoginResponse(rawResponse: unknown): AuthResponse {
     (loginPayload.accessToken as string | undefined) ??
     '';
 
-  const rawUserData = (loginPayload.user as Record<string, unknown> | undefined) ?? {};
+  const userFields = (loginPayload.user as Record<string, unknown> | undefined) ?? {};
 
   const userProfile: AuthUser = {
-    id:     String(rawUserData._id   ?? rawUserData.id    ?? ''),
-    name:   String(rawUserData.name  ?? ''),
-    email:  String(rawUserData.email ?? ''),
-    role:  ((rawUserData.role as string | undefined) ?? 'viewer') as AuthUser['role'],
-    avatar:  rawUserData.avatar as string | undefined,
+    id:     String(userFields._id   ?? userFields.id    ?? ''),
+    name:   String(userFields.name  ?? ''),
+    email:  String(userFields.email ?? ''),
+    role:  ((userFields.role as string | undefined) ?? 'viewer') as AuthUser['role'],
+    avatar:  userFields.avatar as string | undefined,
   };
 
   return {
@@ -132,8 +132,8 @@ export const authApi = {
    * lands on the dashboard without a second form submission.
    */
   register: async (credentials: RegisterCredentials): Promise<AuthResponse> => {
-    const { data: rawResponse } = await apiClient.post('/auth/register', credentials);
-    const authResult = parseLoginResponse(rawResponse);
+    const { data: registerResponse } = await apiClient.post('/auth/register', credentials);
+    const authResult = parseLoginResponse(registerResponse);
 
     if (!authResult.token) {
       throw new Error('Registration succeeded but the server returned no token.');
@@ -153,8 +153,8 @@ export const authApi = {
   login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
     if (IS_DEMO_MODE) return demoLogin(credentials);
 
-    const { data: rawResponse } = await apiClient.post('/auth/login', credentials);
-    const authResult = parseLoginResponse(rawResponse);
+    const { data: loginResponse } = await apiClient.post('/auth/login', credentials);
+    const authResult = parseLoginResponse(loginResponse);
 
     if (!authResult.token) {
       throw new Error('Login succeeded but the server returned no token.');

@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { incidentsApi } from '@/api';
-import type { Incident, IncidentFilters, IncidentStats } from '@/types';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { eventsApi } from '@/api';
+import type { EventFilters, SafetyEvent } from '@/types';
 
-interface UseIncidentsResult {
-  incidents: Incident[];
+interface UseEventsResult {
+  events: SafetyEvent[];
   total: number;
   totalPages: number;
   page: number;
@@ -22,8 +22,8 @@ function isCanceledRequest(error: unknown): boolean {
   );
 }
 
-export function useIncidents(filters?: IncidentFilters): UseIncidentsResult {
-  const [incidents, setIncidents] = useState<Incident[]>([]);
+export function useEvents(filters?: EventFilters): UseEventsResult {
+  const [events, setEvents] = useState<SafetyEvent[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
@@ -32,10 +32,8 @@ export function useIncidents(filters?: IncidentFilters): UseIncidentsResult {
   const [refreshToken, setRefreshToken] = useState(0);
 
   const filtersKey = JSON.stringify({
-    status: filters?.status,
     severity: filters?.severity,
-    type: filters?.type,
-    workerId: filters?.workerId,
+    eventType: filters?.eventType,
     page: filters?.page ?? 1,
     limit: filters?.limit ?? 20,
   });
@@ -46,28 +44,25 @@ export function useIncidents(filters?: IncidentFilters): UseIncidentsResult {
   useEffect(() => {
     const controller = new AbortController();
 
-    const loadIncidents = async () => {
+    const loadEvents = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const result = await incidentsApi.getIncidents(
-          latestFiltersRef.current,
-          controller.signal,
-        );
+        const result = await eventsApi.getEvents(latestFiltersRef.current, controller.signal);
         if (controller.signal.aborted) return;
-        setIncidents(result.incidents);
+        setEvents(result.events);
         setTotal(result.total);
         setTotalPages(result.totalPages);
         setPage(result.page);
       } catch (requestError) {
         if (controller.signal.aborted || isCanceledRequest(requestError)) return;
-        setError('Failed to load incidents.');
+        setError('Failed to load events. Please try again.');
       } finally {
         if (!controller.signal.aborted) setIsLoading(false);
       }
     };
 
-    void loadIncidents();
+    void loadEvents();
 
     return () => controller.abort();
   }, [filtersKey, refreshToken]);
@@ -76,34 +71,5 @@ export function useIncidents(filters?: IncidentFilters): UseIncidentsResult {
     setRefreshToken((currentToken) => currentToken + 1);
   }, []);
 
-  return { incidents, total, totalPages, page, isLoading, error, refetch };
-}
-
-interface UseIncidentStatsResult {
-  stats: IncidentStats | null;
-  isLoading: boolean;
-  refetch: () => void;
-}
-
-export function useIncidentStats(): UseIncidentStatsResult {
-  const [stats, setStats] = useState<IncidentStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const fetchStats = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const result = await incidentsApi.getStats();
-      setStats(result);
-    } catch {
-      // Stats are optional — the list page does not depend on this endpoint.
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
-
-  return { stats, isLoading, refetch: fetchStats };
+  return { events, total, totalPages, page, isLoading, error, refetch };
 }

@@ -61,6 +61,7 @@ export interface IncidentsResponse {
   total: number;
   page: number;
   pageSize: number;
+  totalPages: number;
 }
 
 export interface IncidentFilters {

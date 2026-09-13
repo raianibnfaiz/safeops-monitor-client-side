@@ -46,8 +46,8 @@ export default function Login() {
   };
 
   // ─── Login handler ───────────────────────────────────────────────────────────
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogin = async (formEvent: React.FormEvent) => {
+    formEvent.preventDefault();
     if (!email || !password) {
       setErrorMessage('Please enter your email and password.');
       return;
@@ -57,16 +57,16 @@ export default function Login() {
     try {
       await login({ email, password });
       navigate(redirectAfterLogin, { replace: true });
-    } catch (err) {
-      setErrorMessage(extractErrorMessage(err));
+    } catch (loginError) {
+      setErrorMessage(extractErrorMessage(loginError));
     } finally {
       setIsSubmitting(false);
     }
   };
 
   // ─── Register handler ─────────────────────────────────────────────────────────
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleRegister = async (formEvent: React.FormEvent) => {
+    formEvent.preventDefault();
     if (!name || !email || !password) {
       setErrorMessage('Please fill in all fields.');
       return;
@@ -83,8 +83,8 @@ export default function Login() {
       await login({ email, password });
       setSuccessMessage(`Welcome, ${authResult.user.name}! Redirecting…`);
       setTimeout(() => navigate(redirectAfterLogin, { replace: true }), 800);
-    } catch (err) {
-      setErrorMessage(extractErrorMessage(err));
+    } catch (registerError) {
+      setErrorMessage(extractErrorMessage(registerError));
     } finally {
       setIsSubmitting(false);
     }

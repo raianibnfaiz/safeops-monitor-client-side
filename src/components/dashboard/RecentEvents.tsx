@@ -5,6 +5,12 @@ import { formatRelativeTime } from '@/utils/formatters';
 import type { SafetyEvent, SafetyEventType } from '@/types';
 
 const EVENT_ICON_MAP: Record<SafetyEventType, { icon: typeof AlertTriangle; color: string }> = {
+  HIGH_TEMPERATURE: { icon: AlertTriangle, color: 'text-orange-500' },
+  LOW_BATTERY: { icon: AlertTriangle, color: 'text-yellow-500' },
+  FALL_DETECTED: { icon: AlertTriangle, color: 'text-orange-600' },
+  NO_MOVEMENT: { icon: Radio, color: 'text-yellow-600' },
+  GEOFENCE_BREACH: { icon: MapPin, color: 'text-orange-600' },
+  SOS: { icon: AlertTriangle, color: 'text-red-600' },
   worker_online: { icon: Wifi, color: 'text-green-500' },
   worker_offline: { icon: WifiOff, color: 'text-gray-400' },
   incident_created: { icon: AlertTriangle, color: 'text-red-500' },
@@ -20,6 +26,7 @@ const EVENT_ICON_MAP: Record<SafetyEventType, { icon: typeof AlertTriangle; colo
 const SEVERITY_DOT: Record<string, string> = {
   CRITICAL: 'bg-red-500',
   HIGH: 'bg-orange-500',
+  WARNING: 'bg-yellow-500',
   MEDIUM: 'bg-yellow-500',
   LOW: 'bg-green-500',
   INFO: 'bg-blue-500',

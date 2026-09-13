@@ -196,22 +196,22 @@ export default function Events() {
       )}
 
       {totalPages > 1 && (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex flex-col items-center justify-center gap-2">
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Page {currentPage} of {totalPages}
           </p>
-          <div className="flex gap-2">
+          <div className="flex items-center justify-center gap-2">
             <button
               onClick={() => setPage((current) => Math.max(1, current - 1))}
               disabled={isLoading || currentPage === 1}
-              className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-700"
+              className="px-4 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-700"
             >
               Previous
             </button>
             <button
               onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
               disabled={isLoading || currentPage === totalPages}
-              className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-700"
+              className="px-4 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-700"
             >
               Next
             </button>

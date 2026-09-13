@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { Footer } from './Footer';
 
 const PAGE_TITLES: Record<string, { title: string; subtitle?: string }> = {
   '/dashboard': { title: 'Dashboard', subtitle: 'System overview and real-time status' },
@@ -35,8 +36,11 @@ export function Layout() {
           subtitle={pageInfo.subtitle}
           onMenuClick={() => setIsMobileSidebarOpen(true)}
         />
-        <main className="flex-1 overflow-y-auto p-6">
-          <Outlet />
+        <main className="flex-1 overflow-y-auto p-6 flex flex-col">
+          <div className="flex-1">
+            <Outlet />
+          </div>
+          <Footer />
         </main>
       </div>
     </div>

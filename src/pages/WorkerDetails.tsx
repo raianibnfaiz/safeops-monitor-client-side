@@ -1,6 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, MapPin, Smartphone, Clock, Activity, AlertTriangle, Battery } from 'lucide-react';
-import { clsx } from 'clsx';
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader } from '@/components/common/Card';
 import { WorkerStatusBadge, SeverityBadge, StatusBadge } from '@/components/common/Badge';
@@ -8,12 +7,14 @@ import { BatteryIndicator } from '@/components/common/BatteryIndicator';
 import { PageLoader } from '@/components/common/LoadingSpinner';
 import { ErrorAlert } from '@/components/common/ErrorAlert';
 import { EmptyState } from '@/components/common/EmptyState';
+import { LocationMap, hasValidCoordinates } from '@/components/common/LocationMap';
+import { RecordId } from '@/components/common/RecordId';
 import { useWorker } from '@/hooks/useWorkers';
 import { useSocketEvent } from '@/hooks/useSocket';
-import { workersApi, incidentsApi } from '@/api';
+import { incidentsApi } from '@/api';
 import { formatRelativeTime, formatCoordinates } from '@/utils/formatters';
 import { INCIDENT_TYPE_LABELS } from '@/utils/constants';
-import type { DeviceStatus, WorkerActivity, Incident } from '@/types';
+import type { DeviceStatus, Incident } from '@/types';
 
 const DEVICE_STATUS_LABELS: Record<DeviceStatus, string> = {
   ACTIVE: 'Active',
@@ -31,22 +32,18 @@ export default function WorkerDetails() {
   const navigate = useNavigate();
   const { worker, isLoading, error, refetch } = useWorker(id!);
 
-  const [activities, setActivities] = useState<WorkerActivity[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
-  const [isLoadingRelatedData, setIsLoadingRelatedData] = useState(true);
 
   useEffect(() => {
     if (!id) return;
-    setIsLoadingRelatedData(true);
-    Promise.all([
-      workersApi.getWorkerActivity(id),
-      incidentsApi.getIncidents({ workerId: id, limit: 10 }),
-    ])
-      .then(([activityList, incidentsResponse]) => {
-        setActivities(activityList);
-        setIncidents(incidentsResponse.incidents);
+    incidentsApi
+      .getIncidents({ workerId: id, limit: 10 })
+      .then((incidentsResponse) => {
+        setIncidents(incidentsResponse.incidents.slice(0, 10));
       })
-      .finally(() => setIsLoadingRelatedData(false));
+      .catch(() => {
+        setIncidents([]);
+      });
   }, [id]);
 
   // Real-time updates for this worker
@@ -68,18 +65,8 @@ export default function WorkerDetails() {
     assignedDevice.deviceId !== '—',
   );
 
-  const ACTIVITY_ICONS: Record<WorkerActivity['type'], string> = {
-    check_in: '✅',
-    check_out: '🚪',
-    location_update: '📍',
-    sos: '🆘',
-    fall_detected: '⚠️',
-    device_connected: '📱',
-    device_disconnected: '📴',
-  };
-
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="mx-auto w-full max-w-none space-y-6">
       {/* Back button */}
       <button
         onClick={() => navigate('/workers')}
@@ -152,91 +139,50 @@ export default function WorkerDetails() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Location */}
-        <Card>
-          <CardHeader title="Last Known Location" />
-          {worker.location ? (
-            <div className="space-y-3">
-              {worker.location.zone && (
-                <div className="flex items-center gap-2 text-sm">
-                  <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                  <span className="font-medium text-gray-900 dark:text-white">{worker.location.zone}</span>
-                </div>
-              )}
-              {worker.location.address && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 pl-6">{worker.location.address}</p>
-              )}
-              <div className="font-mono text-xs text-gray-400 bg-gray-50 dark:bg-gray-700/50 rounded px-3 py-2">
-                {formatCoordinates(worker.location.latitude, worker.location.longitude)}
-              </div>
-              <p className="text-xs text-gray-400">
-                Updated {formatRelativeTime(worker.location.timestamp)}
-              </p>
-
-              {/* Simple coordinate visualization */}
-              <div className="mt-4 h-32 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border border-blue-100 dark:border-blue-800/30 flex items-center justify-center relative overflow-hidden">
-                <div className="absolute inset-0 opacity-10"
-                  style={{
-                    backgroundImage: 'repeating-linear-gradient(0deg, #3b82f6 0px, transparent 1px, transparent 20px), repeating-linear-gradient(90deg, #3b82f6 0px, transparent 1px, transparent 20px)',
-                  }}
-                />
-                <div className="relative flex flex-col items-center gap-1">
-                  <div className="w-4 h-4 rounded-full bg-primary-600 border-2 border-white shadow-md" />
-                  <p className="text-xs font-mono text-primary-700 dark:text-primary-400 bg-white dark:bg-gray-800 px-2 py-0.5 rounded shadow-sm">
-                    {worker.location.latitude.toFixed(4)}, {worker.location.longitude.toFixed(4)}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <EmptyState
-              icon={<MapPin className="w-5 h-5" />}
-              title="No location data"
-              description="This worker's location has not been reported yet."
-            />
-          )}
-        </Card>
-
-        {/* Activity feed */}
-        <Card padding="none" className="overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
-            <CardHeader title="Recent Activity" className="mb-0" />
-          </div>
-          <div className="divide-y divide-gray-50 dark:divide-gray-700/50 max-h-[360px] overflow-y-auto">
-            {isLoadingRelatedData ? (
-              Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="px-6 py-3 flex gap-3">
-                  <div className="w-6 h-6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-                  <div className="flex-1 space-y-1.5">
-                    <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-3/4" />
-                    <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-1/3" />
-                  </div>
-                </div>
-              ))
-            ) : activities.length === 0 ? (
-              <EmptyState title="No activity" className="py-12" />
-            ) : (
-              activities.map((activity) => (
-                <div key={activity.id} className="px-6 py-3 flex items-start gap-3">
-                  <span className="text-base flex-shrink-0">{ACTIVITY_ICONS[activity.type] ?? '•'}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-800 dark:text-gray-200">{activity.description}</p>
-                    <p className="text-xs text-gray-400">{formatRelativeTime(activity.timestamp)}</p>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </Card>
-      </div>
-
-      {/* Incident history */}
       <Card>
-        <CardHeader
-          title="Incident History"
-          subtitle={`${incidents.length} incident(s) for this worker`}
-        />
+        <CardHeader title="Last Known Location" />
+        {worker.location && hasValidCoordinates(worker.location.latitude, worker.location.longitude) ? (
+          <div className="space-y-3">
+            {worker.location.zone && (
+              <div className="flex items-center gap-2 text-sm">
+                <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <span className="font-medium text-gray-900 dark:text-white">{worker.location.zone}</span>
+              </div>
+            )}
+            {worker.location.address && (
+              <p className="text-sm text-gray-500 dark:text-gray-400 pl-6">{worker.location.address}</p>
+            )}
+            <div className="font-mono text-xs text-gray-400 bg-gray-50 dark:bg-gray-700/50 rounded px-3 py-2">
+              {formatCoordinates(worker.location.latitude, worker.location.longitude)}
+            </div>
+            <p className="text-xs text-gray-400">
+              Updated {formatRelativeTime(worker.location.timestamp)}
+            </p>
+            <LocationMap
+              latitude={worker.location.latitude}
+              longitude={worker.location.longitude}
+              label={[worker.name, worker.location.zone].filter(Boolean).join(' · ')}
+            />
+          </div>
+        ) : (
+          <EmptyState
+            icon={<MapPin className="w-5 h-5" />}
+            title="No location data"
+            description="This worker's location has not been reported yet."
+          />
+        )}
+      </Card>
+
+      <Card>
+        <div className="mb-6 flex flex-col items-center text-center">
+          <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-primary-600 dark:text-primary-400">
+            Safety record
+          </p>
+          <h3 className="mt-2 text-xl font-semibold tracking-tight text-gray-900 dark:text-white">
+            Recent Incidents
+          </h3>
+          <div className="mt-3 h-px w-20 bg-gradient-to-r from-transparent via-primary-400/80 to-transparent" />
+        </div>
         {incidents.length === 0 ? (
           <EmptyState
             icon={<AlertTriangle className="w-5 h-5" />}
@@ -254,6 +200,7 @@ export default function WorkerDetails() {
                     </span>
                     <SeverityBadge severity={incident.severity} />
                     <StatusBadge status={incident.status} />
+                    <RecordId value={incident.id} />
                   </div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                     {INCIDENT_TYPE_LABELS[incident.type] ?? incident.type} · {formatRelativeTime(incident.createdAt)}

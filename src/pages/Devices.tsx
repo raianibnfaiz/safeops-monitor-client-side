@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Filter, RefreshCw, Search, Smartphone } from 'lucide-react';
+import { Filter, RefreshCw, Smartphone } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Card } from '@/components/common/Card';
 import { BatteryIndicator } from '@/components/common/BatteryIndicator';
@@ -8,6 +8,8 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorAlert } from '@/components/common/ErrorAlert';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { FilterSelect } from '@/components/common/FilterSelect';
+import { SearchBar } from '@/components/common/SearchBar';
+import { useSearchField } from '@/hooks/useSearchField';
 import { useDevices } from '@/hooks/useDevices';
 import { formatRelativeTime } from '@/utils/formatters';
 import { PAGE_SIZE } from '@/utils/constants';
@@ -79,12 +81,14 @@ function AssignedWorker({ device }: { device: FieldDevice }) {
 
 export default function Devices() {
   const { devices, total, isLoading, error, refetch } = useDevices();
-  const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
+  const { appliedTerm, field: searchField } = useSearchField({
+    onTermChange: () => setPage(1),
+  });
 
   const filteredDevices = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = appliedTerm.trim().toLowerCase();
     return devices.filter((device) => {
       if (!matchesDeviceStatus(device.status, statusFilter)) return false;
       if (!term) return true;
@@ -99,13 +103,13 @@ export default function Devices() {
         .toLowerCase();
       return searchableText.includes(term);
     });
-  }, [devices, search, statusFilter]);
+  }, [devices, appliedTerm, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredDevices.length / PAGE_SIZE));
 
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter]);
+  }, [statusFilter]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -115,22 +119,8 @@ export default function Devices() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1 sm:max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search devices or workers…"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className={clsx(
-              'w-full pl-9 pr-4 py-2.5 rounded-lg border text-sm',
-              'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700',
-              'text-gray-900 dark:text-white placeholder-gray-400',
-              'focus:outline-none focus:ring-2 focus:ring-primary-500',
-            )}
-          />
-        </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <SearchBar field={searchField} placeholder="Search devices or workers…" />
         <FilterSelect
           value={statusFilter}
           onChange={setStatusFilter}
@@ -148,7 +138,7 @@ export default function Devices() {
 
       <p className="text-sm text-gray-500 dark:text-gray-400">
         Showing {paginatedDevices.length} of {filteredDevices.length} devices
-        {(search || statusFilter) && filteredDevices.length !== total ? ` (filtered from ${total})` : ''}
+        {(appliedTerm || statusFilter) && filteredDevices.length !== total ? ` (filtered from ${total})` : ''}
       </p>
 
       {error && <ErrorAlert message={error} onRetry={refetch} />}
@@ -162,7 +152,7 @@ export default function Devices() {
           <EmptyState
             icon={<Smartphone className="w-6 h-6" />}
             title="No devices found"
-            description={search ? 'Try a different search term.' : 'No devices were returned by the API.'}
+            description={appliedTerm ? 'Try a different search term.' : 'No devices were returned by the API.'}
           />
         </Card>
       ) : (

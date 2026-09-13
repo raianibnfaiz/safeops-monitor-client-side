@@ -6,13 +6,16 @@ import { ToastProvider } from '@/contexts/ToastContext';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { Layout } from '@/components/layout/Layout';
 import { ToastContainer } from '@/components/common/ToastContainer';
+import { GlobalAlertListener } from '@/components/common/GlobalAlertListener';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import Workers from '@/pages/Workers';
 import WorkerDetails from '@/pages/WorkerDetails';
 import Incidents from '@/pages/Incidents';
+import IncidentDetails from '@/pages/IncidentDetails';
 import Devices from '@/pages/Devices';
 import Events from '@/pages/Events';
+import EventDetails from '@/pages/EventDetails';
 
 export default function App() {
   return (
@@ -33,14 +36,17 @@ export default function App() {
                     <Route path="/workers" element={<Workers />} />
                     <Route path="/workers/:id" element={<WorkerDetails />} />
                     <Route path="/incidents" element={<Incidents />} />
+                    <Route path="/incidents/:id" element={<IncidentDetails />} />
                     <Route path="/devices" element={<Devices />} />
                     <Route path="/events" element={<Events />} />
+                    <Route path="/events/:id" element={<EventDetails />} />
                   </Route>
                 </Route>
 
                 {/* Fallback */}
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>
+              <GlobalAlertListener />
               <ToastContainer />
             </ToastProvider>
           </SocketProvider>

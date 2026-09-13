@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Filter, ChevronRight, MapPin, RefreshCw, Users } from 'lucide-react';
+import { Filter, ChevronRight, MapPin, RefreshCw, Users } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Card } from '@/components/common/Card';
 import { WorkerStatusBadge } from '@/components/common/Badge';
@@ -9,6 +9,8 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorAlert } from '@/components/common/ErrorAlert';
 import { FilterSelect } from '@/components/common/FilterSelect';
+import { SearchBar } from '@/components/common/SearchBar';
+import { useSearchField } from '@/hooks/useSearchField';
 import { useWorkers } from '@/hooks/useWorkers';
 import { useSocketEvent } from '@/hooks/useSocket';
 import { formatRelativeTime } from '@/utils/formatters';
@@ -25,18 +27,18 @@ export default function Workers() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [search, setSearch] = useState(searchParams.get('search') ?? '');
   const [statusFilter, setStatusFilter] = useState<WorkerStatus | ''>('');
   const [page, setPage] = useState(1);
-  const [debouncedSearch, setDebouncedSearch] = useState(search);
-
-  useEffect(() => {
-    const debounceTimer = setTimeout(() => setDebouncedSearch(search), 400);
-    return () => clearTimeout(debounceTimer);
-  }, [search]);
+  const { appliedTerm, field: searchField } = useSearchField({
+    initialValue: searchParams.get('search') ?? '',
+    onTermChange: (term) => {
+      setPage(1);
+      setSearchParams(term ? { search: term } : {});
+    },
+  });
 
   const filters: WorkerFilters = {
-    search: debouncedSearch || undefined,
+    search: appliedTerm || undefined,
     status: statusFilter || undefined,
     page,
     limit: PAGE_SIZE,
@@ -51,37 +53,10 @@ export default function Workers() {
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const searchValue = event.target.value;
-    setSearch(searchValue);
-    setPage(1);
-    if (searchValue) {
-      setSearchParams({ search: searchValue });
-    } else {
-      setSearchParams({});
-    }
-  };
-
   return (
     <div className="space-y-5">
-      {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        {/* Search */}
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search by name, ID, or device…"
-            value={search}
-            onChange={handleSearchChange}
-            className={clsx(
-              'w-full pl-9 pr-4 py-2.5 rounded-lg border text-sm',
-              'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700',
-              'text-gray-900 dark:text-white placeholder-gray-400',
-              'focus:outline-none focus:ring-2 focus:ring-primary-500',
-            )}
-          />
-        </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <SearchBar field={searchField} placeholder="Search by name, ID, or device…" />
 
         <FilterSelect
           value={statusFilter}
@@ -147,7 +122,7 @@ export default function Workers() {
                     <EmptyState
                       icon={<Users className="w-6 h-6" />}
                       title="No workers found"
-                      description={search ? 'Try a different search term.' : 'No workers match the current filter.'}
+                      description={appliedTerm ? 'Try a different search term.' : 'No workers match the current filter.'}
                     />
                   </td>
                 </tr>

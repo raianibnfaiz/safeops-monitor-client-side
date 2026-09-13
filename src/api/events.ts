@@ -1,5 +1,6 @@
 import { apiClient } from './client';
 import { asObject, toFiniteNumber } from '@/utils/objects';
+import { fetchAllPages, matchesSearch } from '@/utils/search';
 import { MONITOR_EVENT_TYPES } from '@/types';
 import type { EventFilters, EventsResponse, SafetyEvent, SafetyEventType } from '@/types';
 
@@ -42,6 +43,86 @@ function normaliseEventType(eventDocument: Record<string, unknown>): SafetyEvent
   return EVENT_TYPE_ALIASES[upperType] ?? EVENT_TYPE_ALIASES[lowerType] ?? 'incident_updated';
 }
 
+function isValidCoordinatePair(latitude: number, longitude: number): boolean {
+  return (
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    longitude >= -180 &&
+    longitude <= 180
+  );
+}
+
+// Handles both `{ latitude, longitude }` / `{ lat, lng }` shaped objects and
+// GeoJSON-style `[longitude, latitude]` coordinate arrays.
+function extractCoordinates(source: unknown): { latitude: number; longitude: number } | undefined {
+  if (!source) return undefined;
+
+  if (Array.isArray(source)) {
+    if (source.length < 2) return undefined;
+    const longitude = Number(source[0]);
+    const latitude = Number(source[1]);
+    return isValidCoordinatePair(latitude, longitude) ? { latitude, longitude } : undefined;
+  }
+
+  if (typeof source !== 'object') return undefined;
+  const fields = source as Record<string, unknown>;
+  const latitude = Number(fields.latitude ?? fields.lat);
+  const longitude = Number(fields.longitude ?? fields.lng ?? fields.lon);
+
+  if (isValidCoordinatePair(latitude, longitude)) return { latitude, longitude };
+  if (fields.coordinates) return extractCoordinates(fields.coordinates);
+  return undefined;
+}
+
+// Backends vary in where they place event coordinates: a nested `location`
+// object (like workers/incidents), a nested `lastKnownLocation`, directly on
+// the event document, or inside `metadata`/`data`. Check them all.
+function extractEventLocation(
+  eventDocument: Record<string, unknown>,
+  metadata: Record<string, unknown> | undefined,
+): SafetyEvent['location'] {
+  const candidateSources: unknown[] = [
+    eventDocument.location,
+    eventDocument.lastKnownLocation,
+    eventDocument.last_location,
+    metadata?.location,
+    eventDocument,
+    metadata,
+  ];
+
+  for (const source of candidateSources) {
+    const coordinates = extractCoordinates(source);
+    if (!coordinates) continue;
+
+    const fields =
+      source && typeof source === 'object' && !Array.isArray(source)
+        ? (source as Record<string, unknown>)
+        : {};
+
+    return {
+      latitude: coordinates.latitude,
+      longitude: coordinates.longitude,
+      address: fields.address as string | undefined,
+      zone: (fields.zone ?? fields.area) as string | undefined,
+    };
+  }
+
+  return undefined;
+}
+
+function unwrapEventDocument(payload: unknown): Record<string, unknown> {
+  const document = asObject(payload) ?? {};
+  const nestedDocument = asObject(document.data);
+  return nestedDocument ?? document;
+}
+
+function isRouteNotFound(error: unknown): boolean {
+  const axiosError = error as { response?: { status?: number } };
+  return axiosError?.response?.status === 404;
+}
+
 function extractEventList(payload: unknown): Record<string, unknown>[] {
   if (Array.isArray(payload)) return payload as Record<string, unknown>[];
   const responseBody = asObject(payload);
@@ -59,6 +140,7 @@ export function normaliseEvent(eventDocument: Record<string, unknown>): SafetyEv
   const populatedDevice = asObject(eventDocument.device);
   const eventType = normaliseEventType(eventDocument);
   const message = String(eventDocument.message ?? eventDocument.title ?? eventDocument.description ?? eventType);
+  const metadata = (eventDocument.metadata ?? eventDocument.data) as Record<string, unknown> | undefined;
 
   return {
     id: String(eventDocument._id ?? eventDocument.id ?? `evt-${Math.random().toString(36).slice(2)}`),
@@ -92,7 +174,8 @@ export function normaliseEvent(eventDocument: Record<string, unknown>): SafetyEv
       eventDocument.created_at ??
       new Date().toISOString(),
     ),
-    metadata: (eventDocument.metadata ?? eventDocument.data) as Record<string, unknown> | undefined,
+    location: extractEventLocation(eventDocument, metadata),
+    metadata,
   };
 }
 
@@ -145,6 +228,85 @@ export const eventsApi = {
       signal,
     });
     return normaliseEventsResponse(data);
+  },
+
+  searchEvents: async (
+    filters?: EventFilters,
+    signal?: AbortSignal,
+  ): Promise<EventsResponse> => {
+    const searchTerm = filters?.search?.trim() ?? '';
+    const page = toFiniteNumber(filters?.page, 1) || 1;
+    const pageSize = toFiniteNumber(filters?.limit, 20) || 20;
+
+    const allEvents = await fetchAllPages(
+      async (requestPage, requestLimit, requestSignal) => {
+        const result = await eventsApi.getEvents(
+          {
+            severity: filters?.severity,
+            eventType: filters?.eventType,
+            page: requestPage,
+            limit: requestLimit,
+          },
+          requestSignal,
+        );
+        return { items: result.events, totalPages: result.totalPages };
+      },
+      { pageSize: 100, signal },
+    );
+
+    const matchingEvents = allEvents.filter((event) =>
+      matchesSearch(
+        [
+          event.title,
+          event.description,
+          event.workerName,
+          event.workerId,
+          event.deviceId,
+          event.type,
+          event.id,
+          event.incidentId,
+        ],
+        searchTerm,
+      ),
+    );
+
+    const total = matchingEvents.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
+
+    return {
+      events: matchingEvents,
+      total,
+      page,
+      pageSize,
+      totalPages,
+    };
+  },
+
+  // GET /events/:id exists on the backend, but fall back to scanning the
+  // paginated list (same trick used for incidents) in case it's ever
+  // unavailable, so the details page never hard-fails on a 404.
+  getEvent: async (id: string, signal?: AbortSignal): Promise<SafetyEvent> => {
+    try {
+      const { data } = await apiClient.get(`/events/${id}`, { signal });
+      return normaliseEvent(unwrapEventDocument(data));
+    } catch (err) {
+      if (!isRouteNotFound(err)) throw err;
+
+      const allEvents = await fetchAllPages(
+        async (requestPage, requestLimit, requestSignal) => {
+          const result = await eventsApi.getEvents(
+            { page: requestPage, limit: requestLimit },
+            requestSignal,
+          );
+          return { items: result.events, totalPages: result.totalPages };
+        },
+        { pageSize: 100, signal },
+      );
+
+      const match = allEvents.find((event) => event.id === id);
+      if (!match) throw new Error('Event not found');
+      return match;
+    }
   },
 
   getRecentEvents: async (limit = 15): Promise<SafetyEvent[]> => {

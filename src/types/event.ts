@@ -32,6 +32,13 @@ export type SafetyEventType =
   | 'location_update'
   | 'zone_breach';
 
+export interface EventLocation {
+  latitude: number;
+  longitude: number;
+  address?: string;
+  zone?: string;
+}
+
 export interface SafetyEvent {
   id: string;
   type: SafetyEventType;
@@ -43,6 +50,7 @@ export interface SafetyEvent {
   incidentId?: string;
   severity?: EventSeverity | 'MEDIUM' | 'LOW' | 'INFO';
   timestamp: string;
+  location?: EventLocation;
   metadata?: Record<string, unknown>;
 }
 
@@ -78,6 +86,11 @@ export interface DashboardStats {
   openIncidents: number;
   criticalIncidents: number;
   resolvedToday: number;
+  acknowledgedIncidents: number;
+  lastAcknowledgedAt?: string;
+  lastAcknowledgedIncidentId?: string;
+  lastResolvedAt?: string;
+  lastResolvedIncidentId?: string;
   systemHealth: 'healthy' | 'degraded' | 'critical';
   systemHealthDetails?: SystemHealthDetails;
   lastUpdated: string;

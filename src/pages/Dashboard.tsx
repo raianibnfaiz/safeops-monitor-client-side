@@ -1,25 +1,19 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { Users, Wifi, WifiOff, AlertTriangle, ShieldAlert, Activity } from 'lucide-react';
 import { clsx } from 'clsx';
 import { StatCard } from '@/components/dashboard/StatCard';
-import { IncidentsByDayChart, IncidentsBySeverityChart } from '@/components/dashboard/IncidentChart';
 import { RecentEvents } from '@/components/dashboard/RecentEvents';
 import { Card, CardHeader } from '@/components/common/Card';
 import { ErrorAlert } from '@/components/common/ErrorAlert';
 import { PageLoader } from '@/components/common/LoadingSpinner';
 import { useDashboard } from '@/hooks/useDashboard';
-import { useIncidentStats } from '@/hooks/useIncidents';
 import { useSocketEvent } from '@/hooks/useSocket';
-import { useToast } from '@/contexts/ToastContext';
-import { formatRelativeTime } from '@/utils/formatters';
-import { useSocketContext } from '@/contexts/SocketContext';
-import type { DashboardStats, SafetyEvent } from '@/types';
+import { RecordId } from '@/components/common/RecordId';
+import { formatDateTime, formatRelativeTime } from '@/utils/formatters';
+import type { DashboardStats } from '@/types';
 
 export default function Dashboard() {
   const { stats, recentEvents, isLoading, error, refetch } = useDashboard();
-  const { stats: incidentStats } = useIncidentStats();
-  const { warning, error: toastError } = useToast();
-  const { isConnected } = useSocketContext();
 
   // Real-time stats update
   useSocketEvent('stats:updated', useCallback((data: DashboardStats) => {
@@ -27,18 +21,19 @@ export default function Dashboard() {
     console.log('[Dashboard] Stats updated:', data);
   }, []));
 
-  // Real-time safety events from backend (primary socket event)
-  useSocketEvent('safety:event', useCallback((event: SafetyEvent) => {
-    if (event.severity === 'CRITICAL') {
-      toastError(`🚨 Critical: ${event.title}`, event.description);
-    } else if (event.severity === 'HIGH') {
-      warning(`⚠️ Alert: ${event.title}`, event.description);
-    }
-  }, [toastError, warning]));
+  // Note: toast notifications for `safety:event` alerts are handled globally
+  // by <GlobalAlertListener /> (mounted in App.tsx) so they show up on every
+  // page, not just the Dashboard.
 
-  // Incident lifecycle events from backend
+  // Incident lifecycle events from backend. Debounced so a burst of
+  // incidents arriving in quick succession triggers one refetch instead of
+  // a request per event.
+  const incidentRefetchTimerRef = useRef<number | null>(null);
   useSocketEvent('safety:incident', useCallback(() => {
-    refetch();
+    if (incidentRefetchTimerRef.current) window.clearTimeout(incidentRefetchTimerRef.current);
+    incidentRefetchTimerRef.current = window.setTimeout(() => {
+      refetch();
+    }, 500);
   }, [refetch]));
 
   // System health banner
@@ -105,136 +100,70 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Charts row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          {incidentStats?.byDay ? (
-            <IncidentsByDayChart data={incidentStats.byDay} />
-          ) : (
-            <Card>
-              <CardHeader title="Incidents by Day" subtitle="Last 7 days" />
-              <div className="h-[200px] flex items-center justify-center text-sm text-gray-400">
-                No chart data available
-              </div>
-            </Card>
-          )}
-        </div>
-        <div>
-          {incidentStats?.bySeverity ? (
-            <IncidentsBySeverityChart data={incidentStats.bySeverity} />
-          ) : (
-            <Card>
-              <CardHeader title="By Severity" />
-              <div className="h-[200px] flex items-center justify-center text-sm text-gray-400">
-                No data available
-              </div>
-            </Card>
-          )}
-        </div>
-      </div>
-
       {/* Bottom row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent events (2/3 width) */}
+      <div className="grid grid-cols-1 items-start lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <RecentEvents events={recentEvents} isLoading={isLoading} />
         </div>
 
-        {/* System status */}
-        <Card>
-          <CardHeader title="System Status" />
-          <div className="space-y-4">
-            {/* Database */}
-            <StatusRow
-              label="Database"
-              status={
-                stats?.systemHealthDetails
-                  ? String(stats.systemHealthDetails.database).toLowerCase().includes('connect')
-                    ? 'operational'
-                    : 'down'
-                  : isHealthy ? 'operational' : 'down'
-              }
-            />
-            {/* Socket / WebSocket */}
-            <StatusRow
-              label="WebSocket"
-              status={isConnected ? 'operational' : 'degraded'}
-            />
-            {/* Simulator */}
-            <StatusRow
-              label="Event Simulator"
-              status={
-                stats?.systemHealthDetails
-                  ? stats.systemHealthDetails.simulator ? 'operational' : 'degraded'
-                  : 'operational'
-              }
-            />
-            {/* Backend API overall */}
-            <StatusRow
-              label="Backend API"
-              status={isHealthy ? 'operational' : isDegraded ? 'degraded' : 'down'}
-            />
-
-            {/* Live metrics from systemHealthDetails */}
-            {stats?.systemHealthDetails && (
-              <div className="pt-3 border-t border-gray-100 dark:border-gray-700 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">Clients connected</span>
-                  <span className="font-semibold text-gray-900 dark:text-white">
-                    {stats.systemHealthDetails.clientsConnected}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">Uptime</span>
-                  <span className="font-semibold text-gray-900 dark:text-white">
-                    {formatUptime(stats.systemHealthDetails.uptimeSeconds)}
-                  </span>
-                </div>
+        <Card padding="sm" className="h-auto self-start">
+          <CardHeader title="System Status" className="mb-3" />
+          {stats && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Resolved</span>
+                <span className="font-semibold text-green-600 dark:text-green-400">
+                  {stats.resolvedToday}
+                </span>
               </div>
-            )}
-
-            {stats && (
-              <div className="pt-3 border-t border-gray-100 dark:border-gray-700 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">Resolved today</span>
-                  <span className="font-semibold text-green-600 dark:text-green-400">
-                    {stats.resolvedToday}
-                  </span>
-                </div>
-                <div className="flex justify-between text-xs text-gray-400">
-                  <span>Last updated</span>
-                  <span>{formatRelativeTime(stats.lastUpdated)}</span>
-                </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Acknowledged</span>
+                <span className="font-semibold text-yellow-600 dark:text-yellow-400">
+                  {stats.acknowledgedIncidents}
+                </span>
               </div>
-            )}
-          </div>
+              <StatusEventRow
+                label="Last acknowledgement"
+                timestamp={stats.lastAcknowledgedAt}
+                incidentId={stats.lastAcknowledgedIncidentId}
+              />
+              <StatusEventRow
+                label="Last resolved"
+                timestamp={stats.lastResolvedAt}
+                incidentId={stats.lastResolvedIncidentId}
+              />
+            </div>
+          )}
         </Card>
       </div>
     </div>
   );
 }
 
-function formatUptime(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
-  return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h`;
-}
-
-function StatusRow({ label, status }: { label: string; status: 'operational' | 'degraded' | 'down' }) {
-  const config = {
-    operational: { dot: 'bg-green-500', text: 'Operational', color: 'text-green-600 dark:text-green-400' },
-    degraded: { dot: 'bg-yellow-500', text: 'Degraded', color: 'text-yellow-600 dark:text-yellow-400' },
-    down: { dot: 'bg-red-500 animate-pulse', text: 'Down', color: 'text-red-600 dark:text-red-400' },
-  }[status];
-
+function StatusEventRow({
+  label,
+  timestamp,
+  incidentId,
+}: {
+  label: string;
+  timestamp?: string;
+  incidentId?: string;
+}) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-sm text-gray-600 dark:text-gray-400">{label}</span>
-      <div className="flex items-center gap-1.5">
-        <span className={clsx('w-2 h-2 rounded-full', config.dot)} />
-        <span className={clsx('text-xs font-medium', config.color)}>{config.text}</span>
+    <div className="space-y-1 pt-1">
+      <div className="flex justify-between gap-3 text-sm">
+        <span className="text-gray-500 dark:text-gray-400">{label}</span>
+        <span
+          className="font-semibold text-gray-900 dark:text-white"
+          title={timestamp ? formatDateTime(timestamp) : undefined}
+        >
+          {timestamp ? formatRelativeTime(timestamp) : '—'}
+        </span>
+      </div>
+      <div className="flex justify-end">
+        <RecordId value={incidentId} />
       </div>
     </div>
   );
 }
+

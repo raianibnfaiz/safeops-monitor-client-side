@@ -20,11 +20,21 @@ export function useDashboard(): UseDashboardResult {
     setIsLoading(true);
     setError(null);
     try {
-      const [dashStats, events] = await Promise.all([
+      const [dashStats, events, resolvedSummary, acknowledgedSummary] = await Promise.all([
         workersApi.getDashboardStats(),
         incidentsApi.getRecentEvents(15),
+        incidentsApi.getResolvedSummary(),
+        incidentsApi.getAcknowledgedSummary(),
       ]);
-      setStats(dashStats);
+      setStats({
+        ...dashStats,
+        lastUpdated: resolvedSummary.lastResolvedAt ?? dashStats.lastUpdated,
+        acknowledgedIncidents: acknowledgedSummary.count,
+        lastAcknowledgedAt: acknowledgedSummary.lastAcknowledgedAt,
+        lastAcknowledgedIncidentId: acknowledgedSummary.lastAcknowledgedIncidentId,
+        lastResolvedAt: resolvedSummary.lastResolvedAt,
+        lastResolvedIncidentId: resolvedSummary.lastResolvedIncidentId,
+      });
       setRecentEvents(events);
     } catch {
       setError('Failed to load dashboard data.');

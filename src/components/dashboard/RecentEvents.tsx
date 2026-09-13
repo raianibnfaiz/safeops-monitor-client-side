@@ -1,6 +1,8 @@
 import { AlertTriangle, Wifi, WifiOff, CheckCircle, Radio, MapPin } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { Card, CardHeader } from '@/components/common/Card';
+import { RecordId } from '@/components/common/RecordId';
 import { formatRelativeTime } from '@/utils/formatters';
 import type { SafetyEvent, SafetyEventType } from '@/types';
 
@@ -79,15 +81,26 @@ export function RecentEvents({ events, isLoading }: RecentEventsProps) {
                           title={event.severity}
                         />
                       )}
+                      <RecordId value={event.id} />
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                       {event.description}
                     </p>
-                    {event.workerName && (
+                    {event.workerName && event.workerId ? (
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        Worker:{' '}
+                        <Link
+                          to={`/workers/${event.workerId}`}
+                          className="text-primary-600 dark:text-primary-400 hover:underline"
+                        >
+                          {event.workerName}
+                        </Link>
+                      </p>
+                    ) : event.workerName ? (
                       <p className="text-xs text-gray-400 dark:text-gray-500">
                         Worker: {event.workerName}
                       </p>
-                    )}
+                    ) : null}
                   </div>
                   <span className="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">
                     {formatRelativeTime(event.timestamp)}

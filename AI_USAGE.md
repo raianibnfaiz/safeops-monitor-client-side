@@ -246,3 +246,25 @@ Example device document:
 - Looked up names from `GET /api/workers` instead of assuming `/devices` populates the worker
 - Kept unknown extra Mongo fields in an “Other fields” column so the list stays complete if the schema grows
 
+---
+
+### Prompt 9 — Worker location map (OpenStreetMap + Leaflet)
+
+```
+On the Worker page, display the worker’s location using a map visualization.
+Use OpenStreetMap with Leaflet (free and no API key required).
+Show the location clearly with a marker based on the available coordinates.
+```
+
+**What AI generated:**
+- Installed `leaflet` and `react-leaflet` (no paid map SDK)
+- Reusable `LocationMap` component using OpenStreetMap tiles
+- Worker Details “Last Known Location” section with a marker on the worker’s latitude/longitude
+- Location parsing for `lat`/`lng` and GeoJSON `[lng, lat]` coordinates
+- Dark-mode map styling without a third-party tile API key
+
+**What I decided / changed:**
+- Rejected Carto dark tiles after they showed “API key needed”
+- Kept OpenStreetMap as the only tile source so the map stays free and keyless
+- Used a CSS filter for dark mode instead of a commercial tile provider
+

@@ -13,7 +13,6 @@ import {
 import { clsx } from 'clsx';
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useSocketContext } from '@/contexts/SocketContext';
 
 const NAV_ITEMS = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -26,7 +25,6 @@ const NAV_ITEMS = [
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const { logout, user } = useAuth();
-  const { isConnected } = useSocketContext();
   const location = useLocation();
 
   return (
@@ -83,27 +81,6 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="border-t border-gray-700/50 p-3 space-y-2">
-        {/* Connection status */}
-        <div
-          className={clsx(
-            'flex items-center gap-2 px-2 py-1.5 rounded-md',
-            collapsed && 'justify-center',
-          )}
-          title={isConnected ? 'Connected to server' : 'Disconnected'}
-        >
-          <span
-            className={clsx(
-              'w-2 h-2 rounded-full flex-shrink-0',
-              isConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400',
-            )}
-          />
-          {!collapsed && (
-            <span className="text-xs text-gray-400">
-              {isConnected ? 'Live' : 'Offline'}
-            </span>
-          )}
-        </div>
-
         {/* User */}
         {!collapsed && user && (
           <div className="flex items-center gap-2 px-2 py-1">

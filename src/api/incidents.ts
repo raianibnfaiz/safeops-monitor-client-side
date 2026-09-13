@@ -1,5 +1,6 @@
 import { apiClient } from './client';
 import { asObject, toFiniteNumber } from '@/utils/objects';
+import { fetchAllPages, matchesSearch } from '@/utils/search';
 import type {
   Incident,
   IncidentType,
@@ -11,6 +12,14 @@ import type {
 } from '@/types';
 import { INCIDENT_TYPES } from '@/types';
 import { eventsApi } from './events';
+
+function extractRelatedId(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  const relatedDocument = asObject(value);
+  if (!relatedDocument) return undefined;
+  const relatedId = relatedDocument._id ?? relatedDocument.id;
+  return relatedId ? String(relatedId) : undefined;
+}
 
 function unwrapIncidentDocument(payload: unknown): Record<string, unknown> {
   const document = asObject(payload) ?? {};
@@ -93,7 +102,7 @@ function normaliseIncident(payload: unknown): Incident {
     type: normaliseIncidentType(document.type),
     severity: (document.severity as Incident['severity']) ?? 'LOW',
     status: (document.status as Incident['status']) ?? 'OPEN',
-    workerId: (document.workerId ?? document.worker_id) as string | undefined,
+    workerId: extractRelatedId(document.workerId ?? document.worker_id ?? document.worker),
     workerName: (document.workerName ?? document.worker_name ??
       asObject(document.worker)?.name) as string | undefined,
     deviceId: (document.deviceId ?? document.device_id) as string | undefined,
@@ -156,6 +165,31 @@ function normaliseIncidentsResponse(payload: unknown): IncidentsResponse {
 // Compute IncidentStats client-side from a fetched incidents array.
 // Used as fallback when /incidents/stats doesn't exist on the backend.
 // ---------------------------------------------------------------------------
+function latestIncidentByTimestamp(
+  incidents: Incident[],
+  getTimestamp: (incident: Incident) => string | undefined,
+): { timestamp?: string; incidentId?: string } {
+  const rankedIncidents = incidents
+    .map((incident) => {
+      const timestamp = getTimestamp(incident);
+      return {
+        incident,
+        timestamp,
+        time: timestamp ? Date.parse(timestamp) : Number.NaN,
+      };
+    })
+    .filter((entry) => Boolean(entry.timestamp) && Number.isFinite(entry.time));
+
+  rankedIncidents.sort((left, right) => right.time - left.time);
+  const latest = rankedIncidents[0];
+  if (!latest) return {};
+
+  return {
+    timestamp: latest.timestamp,
+    incidentId: latest.incident.id || latest.incident.incidentId,
+  };
+}
+
 function computeStats(incidents: Incident[]): IncidentStats {
   const lastSevenDays: { date: string; count: number }[] = Array.from({ length: 7 }, (_, dayOffset) => {
     const date = new Date();
@@ -197,9 +231,84 @@ export const incidentsApi = {
     return normaliseIncidentsResponse(data);
   },
 
-  getIncident: async (id: string): Promise<Incident> => {
-    const { data } = await apiClient.get(`/incidents/${id}`);
-    return normaliseIncident(data);
+  searchIncidents: async (
+    filters?: IncidentFilters,
+    signal?: AbortSignal,
+  ): Promise<IncidentsResponse> => {
+    const searchTerm = filters?.search?.trim() ?? '';
+    const page = toFiniteNumber(filters?.page, 1) || 1;
+    const pageSize = toFiniteNumber(filters?.limit, 20) || 20;
+
+    const allIncidents = await fetchAllPages(
+      async (requestPage, requestLimit, requestSignal) => {
+        const result = await incidentsApi.getIncidents(
+          {
+            status: filters?.status,
+            severity: filters?.severity,
+            type: filters?.type,
+            workerId: filters?.workerId,
+            page: requestPage,
+            limit: requestLimit,
+          },
+          requestSignal,
+        );
+        return { items: result.incidents, totalPages: result.totalPages };
+      },
+      { pageSize: 100, signal },
+    );
+
+    const matchingIncidents = allIncidents.filter((incident) =>
+      matchesSearch(
+        [
+          incident.title,
+          incident.description,
+          incident.workerName,
+          incident.workerId,
+          incident.deviceId,
+          incident.type,
+          incident.incidentId,
+          incident.id,
+        ],
+        searchTerm,
+      ),
+    );
+
+    const total = matchingIncidents.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
+
+    return {
+      incidents: matchingIncidents,
+      total,
+      page,
+      pageSize,
+      totalPages,
+    };
+  },
+
+  // The backend has no GET /incidents/:id route (only /:id/acknowledge and
+  // /:id/resolve exist), so we locate the incident by scanning the paginated
+  // list instead of hitting a route that would always 404.
+  getIncident: async (id: string, signal?: AbortSignal): Promise<Incident> => {
+    const allIncidents = await fetchAllPages(
+      async (requestPage, requestLimit, requestSignal) => {
+        const result = await incidentsApi.getIncidents(
+          { page: requestPage, limit: requestLimit },
+          requestSignal,
+        );
+        return { items: result.incidents, totalPages: result.totalPages };
+      },
+      { pageSize: 100, signal },
+    );
+
+    const match = allIncidents.find(
+      (incident) => incident.id === id || incident.incidentId === id,
+    );
+
+    if (!match) {
+      throw new Error('Incident not found');
+    }
+
+    return match;
   },
 
   acknowledgeIncident: async (id: string, note?: string): Promise<Incident> => {
@@ -223,14 +332,74 @@ export const incidentsApi = {
     return data;
   },
 
-  // -------------------------------------------------------------------
-  // Stats: computed client-side from GET /incidents (backend has no
-  // /incidents/stats route — avoids a guaranteed 404 network error).
-  // -------------------------------------------------------------------
   getStats: async (): Promise<IncidentStats> => {
-    const { data } = await apiClient.get('/incidents', { params: { limit: 500, page: 1 } });
-    const { incidents } = normaliseIncidentsResponse(data);
-    return computeStats(incidents);
+    const loadIncidents = (pageSize: number) =>
+      fetchAllPages(
+        async (requestPage, requestLimit, requestSignal) => {
+          const result = await incidentsApi.getIncidents(
+            { page: requestPage, limit: requestLimit },
+            requestSignal,
+          );
+          return { items: result.incidents, totalPages: result.totalPages };
+        },
+        { pageSize },
+      );
+
+    try {
+      return computeStats(await loadIncidents(100));
+    } catch {
+      return computeStats(await loadIncidents(20));
+    }
+  },
+
+  getAcknowledgedSummary: async (): Promise<{
+    count: number;
+    lastAcknowledgedAt?: string;
+    lastAcknowledgedIncidentId?: string;
+  }> => {
+    try {
+      const { incidents, total } = await incidentsApi.getIncidents({
+        status: 'ACKNOWLEDGED',
+        page: 1,
+        limit: 50,
+      });
+      const latest = latestIncidentByTimestamp(
+        incidents,
+        (incident) => incident.acknowledgedAt || incident.updatedAt,
+      );
+
+      return {
+        count: total,
+        lastAcknowledgedAt: latest.timestamp,
+        lastAcknowledgedIncidentId: latest.incidentId,
+      };
+    } catch {
+      return { count: 0 };
+    }
+  },
+
+  getResolvedSummary: async (): Promise<{
+    lastResolvedAt?: string;
+    lastResolvedIncidentId?: string;
+  }> => {
+    try {
+      const { incidents } = await incidentsApi.getIncidents({
+        status: 'RESOLVED',
+        page: 1,
+        limit: 50,
+      });
+      const latest = latestIncidentByTimestamp(
+        incidents,
+        (incident) => incident.resolvedAt || incident.updatedAt,
+      );
+
+      return {
+        lastResolvedAt: latest.timestamp,
+        lastResolvedIncidentId: latest.incidentId,
+      };
+    } catch {
+      return {};
+    }
   },
 
   getRecentEvents: eventsApi.getRecentEvents,

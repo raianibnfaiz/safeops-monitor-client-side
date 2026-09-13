@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { AlertTriangle, Filter, Radio, RefreshCw, Search } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { AlertTriangle, ChevronRight, Filter, Radio, RefreshCw } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Card } from '@/components/common/Card';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorAlert } from '@/components/common/ErrorAlert';
 import { FilterSelect } from '@/components/common/FilterSelect';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { RecordId } from '@/components/common/RecordId';
+import { SearchBar } from '@/components/common/SearchBar';
+import { useSearchField } from '@/hooks/useSearchField';
 import { useEvents } from '@/hooks/useEvents';
 import { useSocketEvent } from '@/hooks/useSocket';
 import { formatDateTime, formatRelativeTime } from '@/utils/formatters';
@@ -59,44 +62,23 @@ function EventSeverityPill({ severity }: { severity?: string }) {
 }
 
 export default function Events() {
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const navigate = useNavigate();
   const [severityFilter, setSeverityFilter] = useState<EventSeverity | ''>('');
   const [typeFilter, setTypeFilter] = useState<MonitorEventType | ''>('');
   const [page, setPage] = useState(1);
-
-  useEffect(() => {
-    const debounceTimer = setTimeout(() => setDebouncedSearch(search), 400);
-    return () => clearTimeout(debounceTimer);
-  }, [search]);
+  const { appliedTerm, field: searchField } = useSearchField({
+    onTermChange: () => setPage(1),
+  });
 
   const filters: EventFilters = {
+    search: appliedTerm || undefined,
     severity: severityFilter || undefined,
     eventType: typeFilter || undefined,
     page,
     limit: EVENTS_PAGE_SIZE,
   };
 
-  const { events: pageEvents, total, totalPages, isLoading, error, refetch } = useEvents(filters);
-
-  const events = useMemo(() => {
-    const searchTerm = debouncedSearch.trim().toLowerCase();
-    if (!searchTerm) return pageEvents;
-
-    return pageEvents.filter((event) => {
-      const searchableText = [
-        event.title,
-        event.description,
-        event.workerName,
-        event.deviceId,
-        event.type,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return searchableText.includes(searchTerm);
-    });
-  }, [pageEvents, debouncedSearch]);
+  const { events, total, totalPages, isLoading, error, refetch } = useEvents(filters);
 
   const currentPage = Math.min(page, Math.max(1, totalPages));
 
@@ -114,22 +96,8 @@ export default function Events() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
-        <div className="relative flex-1 sm:max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search events, workers, or devices…"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className={clsx(
-              'w-full pl-9 pr-4 py-2.5 rounded-lg border text-sm',
-              'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700',
-              'text-gray-900 dark:text-white placeholder-gray-400',
-              'focus:outline-none focus:ring-2 focus:ring-primary-500',
-            )}
-          />
-        </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <SearchBar field={searchField} placeholder="Search events by name or ID…" />
 
         <FilterSelect
           value={severityFilter}
@@ -175,8 +143,12 @@ export default function Events() {
         <Card padding="none" className="overflow-hidden">
           <div className="divide-y divide-gray-50 dark:divide-gray-700/50">
             {events.map((event) => (
-              <div key={event.id} className="px-5 py-4 hover:bg-gray-50 dark:hover:bg-gray-700/20 transition-colors">
-                <div className="flex flex-wrap items-start justify-between gap-3">
+              <div
+                key={event.id}
+                onClick={() => navigate(`/events/${event.id}`, { state: { event } })}
+                className="px-5 py-4 flex items-start gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/20 transition-colors"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3 flex-1 min-w-0">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-semibold text-sm text-gray-900 dark:text-white">
@@ -186,6 +158,7 @@ export default function Events() {
                       <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
                         {INCIDENT_TYPE_LABELS[event.type] ?? event.type.replace(/_/g, ' ')}
                       </span>
+                      <RecordId value={event.id} />
                     </div>
                     {event.description && event.description !== event.title && (
                       <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
@@ -194,22 +167,28 @@ export default function Events() {
                     )}
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
                       {event.workerName && event.workerId ? (
-                        <Link
-                          to={`/workers/${event.workerId}`}
-                          className="text-primary-600 dark:text-primary-400 hover:underline"
-                        >
-                          Worker: {event.workerName}
-                        </Link>
+                        <span>
+                          Worker:{' '}
+                          <Link
+                            to={`/workers/${event.workerId}`}
+                            onClick={(clickEvent) => clickEvent.stopPropagation()}
+                            className="text-primary-600 dark:text-primary-400 hover:underline"
+                          >
+                            {event.workerName}
+                          </Link>
+                        </span>
                       ) : event.workerName ? (
                         <span>Worker: {event.workerName}</span>
                       ) : null}
                       {event.deviceId && <span>Device: {event.deviceId}</span>}
+                      {event.incidentId && <span>Incident ID: {event.incidentId}</span>}
                       <span title={formatDateTime(event.timestamp)}>
                         {formatRelativeTime(event.timestamp)}
                       </span>
                     </div>
                   </div>
                 </div>
+                <ChevronRight className="text-gray-400 flex-shrink-0 mt-0.5 w-4 h-4" />
               </div>
             ))}
           </div>

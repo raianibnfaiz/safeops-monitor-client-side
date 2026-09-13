@@ -56,3 +56,21 @@
     animation-timing-function: ease-out;
   }
 }
+
+.leaflet-container {
+  z-index: 0;
+  font-family: inherit;
+  background: #e5e7eb;
+}
+
+.dark .leaflet-container {
+  background: #1f2937;
+}
+
+.dark .location-map .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9);
+}
+
+.leaflet-control-attribution {
+  font-size: 10px;
+}

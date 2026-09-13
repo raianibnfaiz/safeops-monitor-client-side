@@ -141,30 +141,53 @@ function toWorkerQueryParams(filters?: WorkerFilters): Record<string, string> | 
   return queryParams;
 }
 
-function normaliseWorker(workerDocument: Record<string, unknown>): Worker {
-  const workerIdFromDocument = String(workerDocument._id ?? workerDocument.id ?? '');
-  const device = extractAssignedDevice(workerDocument);
-
-  let location: Worker['location'];
+function extractLocation(workerDocument: Record<string, unknown>): Worker['location'] | undefined {
   const locationPayload =
     workerDocument.location ??
     workerDocument.lastKnownLocation ??
     workerDocument.lastLocation ??
     workerDocument.last_location;
-  if (locationPayload && typeof locationPayload === 'object' && !Array.isArray(locationPayload)) {
-    const locationFields = locationPayload as Record<string, unknown>;
-    const latitude = Number(locationFields.latitude ?? locationFields.lat);
-    const longitude = Number(locationFields.longitude ?? locationFields.lng ?? locationFields.lon);
-    if (!Number.isNaN(latitude) && !Number.isNaN(longitude)) {
-      location = {
-        latitude,
-        longitude,
-        address: locationFields.address as string | undefined,
-        zone: (locationFields.zone ?? locationFields.area) as string | undefined,
-        timestamp: String(locationFields.timestamp ?? locationFields.updatedAt ?? new Date().toISOString()),
-      };
-    }
+
+  if (!locationPayload || typeof locationPayload !== 'object' || Array.isArray(locationPayload)) {
+    return undefined;
   }
+
+  const locationFields = locationPayload as Record<string, unknown>;
+  let latitude = Number(locationFields.latitude ?? locationFields.lat);
+  let longitude = Number(locationFields.longitude ?? locationFields.lng ?? locationFields.lon);
+
+  const coordinates = locationFields.coordinates;
+  if (
+    (!Number.isFinite(latitude) || !Number.isFinite(longitude)) &&
+    Array.isArray(coordinates) &&
+    coordinates.length >= 2
+  ) {
+    longitude = Number(coordinates[0]);
+    latitude = Number(coordinates[1]);
+  }
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return undefined;
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return undefined;
+
+  return {
+    latitude,
+    longitude,
+    address: locationFields.address as string | undefined,
+    zone: (locationFields.zone ?? locationFields.area) as string | undefined,
+    timestamp: String(
+      locationFields.timestamp ??
+      locationFields.updatedAt ??
+      locationFields.createdAt ??
+      new Date().toISOString(),
+    ),
+  };
+}
+
+function normaliseWorker(workerDocument: Record<string, unknown>): Worker {
+  const workerIdFromDocument = String(workerDocument._id ?? workerDocument.id ?? '');
+  const device = extractAssignedDevice(workerDocument);
+
+  const location = extractLocation(workerDocument);
 
   return {
     id: workerIdFromDocument,
@@ -308,6 +331,9 @@ export const workersApi = {
         countCriticalIncidents(visualization) ?? summary.criticalIncidents ?? summary.criticalEvents,
       ),
       resolvedToday: toFiniteNumber(summary.resolvedToday ?? incidentCounts?.resolved),
+      acknowledgedIncidents: toFiniteNumber(
+        incidentCounts?.acknowledged ?? summary.acknowledgedIncidents ?? summary.acknowledged,
+      ),
       systemHealth,
       systemHealthDetails: typeof systemHealthPayload === 'object' && systemHealthPayload !== null
         ? systemHealthPayload as import('@/types').SystemHealthDetails

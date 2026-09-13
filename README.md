@@ -238,15 +238,17 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env`:
+The live backend URL is **https://safeops-monitor-server-side.onrender.com**.  
+Set `VITE_API_BASE_URL` and `VITE_SOCKET_URL` from that host in `.env` (the app does not hardcode it in source).
+
 ```env
-VITE_API_BASE_URL=http://localhost:5000/api
-VITE_SOCKET_URL=http://localhost:5000
-VITE_MOCK_AUTH=false          # set true to test the UI without a backend
+VITE_API_BASE_URL=<backend-url>/api
+VITE_SOCKET_URL=<backend-url>
+VITE_MOCK_AUTH=false
 ```
 
 ### 3. Start the backend
-Follow the instructions in [safeops-monitor-server-side](https://github.com/raianibnfaiz/safeops-monitor-server-side) to run the backend on `http://localhost:5000`.
+To run the API locally instead, see [safeops-monitor-server-side](https://github.com/raianibnfaiz/safeops-monitor-server-side) and update the same `.env` keys.
 
 ### 4. Start the frontend dev server
 ```bash

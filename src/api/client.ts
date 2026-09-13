@@ -1,16 +1,12 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import { API_BASE_URL, TOKEN_STORAGE_KEY } from '@/config/env';
 
 // ─── LocalStorage key names ───────────────────────────────────────────────────
-// These are the keys used to persist auth data between page loads.
-// Other modules import these constants so the key strings stay in one place.
-export const JWT_STORAGE_KEY  = import.meta.env.VITE_TOKEN_KEY || 'safeops_token';
+export const JWT_STORAGE_KEY = TOKEN_STORAGE_KEY;
 export const USER_PROFILE_KEY = 'safeops_user';
 
-// ─── Axios instance ───────────────────────────────────────────────────────────
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
-
 export const apiClient = axios.create({
-  baseURL: apiBaseUrl,
+  baseURL: API_BASE_URL,
   timeout: 15_000,
   headers: { 'Content-Type': 'application/json' },
 });

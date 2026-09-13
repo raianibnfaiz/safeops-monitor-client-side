@@ -72,7 +72,7 @@ export function extractErrorMessage(error: unknown): string {
       errorMessage.includes('ERR_CONNECTION_REFUSED');
 
     if (isConnectionRefused) {
-      return 'Cannot reach the server. Make sure the backend is running on http://localhost:5000.';
+      return 'Cannot reach the server. Make sure the backend is running.';
     }
     return errorMessage || 'Network error. Please try again.';
   }

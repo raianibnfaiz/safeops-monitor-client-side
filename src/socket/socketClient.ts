@@ -1,8 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { JWT_STORAGE_KEY } from '@/api/client';
+import { SOCKET_SERVER_URL } from '@/config/env';
 import type { SocketEventMap } from '@/types';
-
-const SOCKET_SERVER_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
 
 type SocketEventKey = keyof SocketEventMap;
 type SocketEventHandler<K extends SocketEventKey> = (data: SocketEventMap[K]) => void;

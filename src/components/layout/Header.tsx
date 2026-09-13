@@ -1,16 +1,26 @@
-import { Bell, Sun, Moon } from 'lucide-react';
+import { Bell, Menu, Sun, Moon } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 
 interface HeaderProps {
   title: string;
   subtitle?: string;
+  onMenuClick?: () => void;
 }
 
-export function Header({ title, subtitle }: HeaderProps) {
+export function Header({ title, subtitle, onMenuClick }: HeaderProps) {
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <header className="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-6 gap-4 sticky top-0 z-10">
+    <header className="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-4 sm:px-6 gap-3 sm:gap-4 sticky top-0 z-10">
+      {/* Mobile menu toggle — opens the sidebar as an overlay above the page */}
+      <button
+        onClick={onMenuClick}
+        className="md:hidden flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+        aria-label="Open menu"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
+
       <div className="flex-1 min-w-0">
         <h1 className="text-lg font-semibold text-gray-900 dark:text-white truncate">{title}</h1>
         {subtitle && (

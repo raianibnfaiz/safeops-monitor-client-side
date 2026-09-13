@@ -10,10 +10,10 @@ const TOAST_ICONS = {
 };
 
 const TOAST_STYLES = {
-  success: 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700 text-green-800 dark:text-green-200',
-  error: 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700 text-red-800 dark:text-red-200',
-  warning: 'bg-yellow-50 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-700 text-yellow-800 dark:text-yellow-200',
-  info: 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700 text-blue-800 dark:text-blue-200',
+  success: 'bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-600 text-green-800 dark:text-green-50',
+  error: 'bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-600 text-red-800 dark:text-red-50',
+  warning: 'bg-yellow-50 dark:bg-yellow-950 border-yellow-200 dark:border-yellow-600 text-yellow-800 dark:text-yellow-50',
+  info: 'bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-600 text-blue-800 dark:text-blue-50',
 };
 
 const ICON_STYLES = {
@@ -31,6 +31,7 @@ function ToastItem({ toast }: { toast: Toast }) {
     <div
       className={clsx(
         'flex items-start gap-3 p-4 rounded-lg border shadow-lg max-w-sm w-full pointer-events-auto',
+        'dark:shadow-black/50',
         'animate-in slide-in-from-right-5 duration-300',
         TOAST_STYLES[toast.type],
       )}
@@ -39,7 +40,7 @@ function ToastItem({ toast }: { toast: Toast }) {
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold">{toast.title}</p>
         {toast.message && (
-          <p className="text-xs mt-0.5 opacity-80">{toast.message}</p>
+          <p className="text-xs mt-0.5 opacity-90 dark:opacity-100">{toast.message}</p>
         )}
       </div>
       <button
@@ -60,7 +61,7 @@ export function ToastContainer() {
 
   return (
     <div
-      className="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"
+      className="fixed top-4 left-4 right-4 sm:left-auto z-50 flex flex-col gap-2 pointer-events-none"
       aria-live="polite"
     >
       {toasts.map((toast) => (

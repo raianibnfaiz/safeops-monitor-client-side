@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import { Users, Wifi, WifiOff, AlertTriangle, ShieldAlert, Activity } from 'lucide-react';
+import { Users, Smartphone, AlertTriangle, ShieldAlert, Activity } from 'lucide-react';
 import { clsx } from 'clsx';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { RecentEvents } from '@/components/dashboard/RecentEvents';
@@ -8,7 +8,6 @@ import { ErrorAlert } from '@/components/common/ErrorAlert';
 import { PageLoader } from '@/components/common/LoadingSpinner';
 import { useDashboard } from '@/hooks/useDashboard';
 import { useSocketEvent } from '@/hooks/useSocket';
-import { RecordId } from '@/components/common/RecordId';
 import { formatDateTime, formatRelativeTime } from '@/utils/formatters';
 import type { DashboardStats } from '@/types';
 
@@ -77,13 +76,13 @@ export default function Dashboard() {
         <StatCard
           title="Active Devices"
           value={stats?.activeDevices ?? 0}
-          icon={Wifi}
+          icon={Smartphone}
           color="purple"
         />
         <StatCard
           title="Inactive Devices"
           value={stats?.inactiveDevices ?? 0}
-          icon={WifiOff}
+          icon={Smartphone}
           color="orange"
         />
         <StatCard
@@ -122,46 +121,18 @@ export default function Dashboard() {
                   {stats.acknowledgedIncidents}
                 </span>
               </div>
-              <StatusEventRow
-                label="Last acknowledgement"
-                timestamp={stats.lastAcknowledgedAt}
-                incidentId={stats.lastAcknowledgedIncidentId}
-              />
-              <StatusEventRow
-                label="Last resolved"
-                timestamp={stats.lastResolvedAt}
-                incidentId={stats.lastResolvedIncidentId}
-              />
+              <div className="flex justify-between gap-3 text-sm pt-1">
+                <span className="text-gray-500 dark:text-gray-400">Last resolved</span>
+                <span
+                  className="font-semibold text-gray-900 dark:text-white"
+                  title={stats.lastResolvedAt ? formatDateTime(stats.lastResolvedAt) : undefined}
+                >
+                  {stats.lastResolvedAt ? formatRelativeTime(stats.lastResolvedAt) : '—'}
+                </span>
+              </div>
             </div>
           )}
         </Card>
-      </div>
-    </div>
-  );
-}
-
-function StatusEventRow({
-  label,
-  timestamp,
-  incidentId,
-}: {
-  label: string;
-  timestamp?: string;
-  incidentId?: string;
-}) {
-  return (
-    <div className="space-y-1 pt-1">
-      <div className="flex justify-between gap-3 text-sm">
-        <span className="text-gray-500 dark:text-gray-400">{label}</span>
-        <span
-          className="font-semibold text-gray-900 dark:text-white"
-          title={timestamp ? formatDateTime(timestamp) : undefined}
-        >
-          {timestamp ? formatRelativeTime(timestamp) : '—'}
-        </span>
-      </div>
-      <div className="flex justify-end">
-        <RecordId value={incidentId} />
       </div>
     </div>
   );

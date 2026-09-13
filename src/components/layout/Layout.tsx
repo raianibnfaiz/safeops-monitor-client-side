@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
@@ -14,12 +15,26 @@ export function Layout() {
   const { pathname } = useLocation();
   const basePath = '/' + pathname.split('/')[1];
   const pageInfo = PAGE_TITLES[basePath] ?? { title: 'SafeOps Monitor' };
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  // Close the mobile overlay whenever the route changes (e.g. browser
+  // back/forward, or any in-page link that isn't a sidebar nav item).
+  useEffect(() => {
+    setIsMobileSidebarOpen(false);
+  }, [pathname]);
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden">
-      <Sidebar />
+      <Sidebar
+        isMobileOpen={isMobileSidebarOpen}
+        onCloseMobile={() => setIsMobileSidebarOpen(false)}
+      />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header title={pageInfo.title} subtitle={pageInfo.subtitle} />
+        <Header
+          title={pageInfo.title}
+          subtitle={pageInfo.subtitle}
+          onMenuClick={() => setIsMobileSidebarOpen(true)}
+        />
         <main className="flex-1 overflow-y-auto p-6">
           <Outlet />
         </main>

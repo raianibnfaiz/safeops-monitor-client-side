@@ -63,31 +63,33 @@ export function RecentEvents({ events, isLoading }: RecentEventsProps) {
               };
               const Icon = config.icon;
               return (
-                <div key={event.id ?? idx} className="flex items-start gap-3 px-6 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                <div key={event.id ?? idx} className="flex items-start gap-3 px-4 sm:px-6 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
                   <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
                     <Icon className={clsx('w-4 h-4', config.color)} />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex items-start gap-2">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white break-words">
                         {event.title}
                       </p>
                       {event.severity && (
                         <span
                           className={clsx(
-                            'flex-shrink-0 w-2 h-2 rounded-full',
+                            'flex-shrink-0 w-2 h-2 rounded-full mt-1.5',
                             SEVERITY_DOT[event.severity],
                           )}
                           title={event.severity}
                         />
                       )}
-                      <RecordId value={event.id} />
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                      {event.description}
-                    </p>
+                    <RecordId value={event.id} />
+                    {event.description && event.description !== event.title && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 break-words">
+                        {event.description}
+                      </p>
+                    )}
                     {event.workerName && event.workerId ? (
-                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                      <p className="text-xs text-gray-400 dark:text-gray-500 break-words">
                         Worker:{' '}
                         <Link
                           to={`/workers/${event.workerId}`}
@@ -97,14 +99,14 @@ export function RecentEvents({ events, isLoading }: RecentEventsProps) {
                         </Link>
                       </p>
                     ) : event.workerName ? (
-                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                      <p className="text-xs text-gray-400 dark:text-gray-500 break-words">
                         Worker: {event.workerName}
                       </p>
                     ) : null}
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      {formatRelativeTime(event.timestamp)}
+                    </p>
                   </div>
-                  <span className="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">
-                    {formatRelativeTime(event.timestamp)}
-                  </span>
                 </div>
               );
             })}
